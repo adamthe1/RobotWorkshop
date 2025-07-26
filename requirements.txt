@@ -1,4 +1,0 @@
-typer
-requests
-pillow
-numpy
