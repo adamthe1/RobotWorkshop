@@ -7,3 +7,15 @@ Bartender: Hello there! Welcome to the bar. What can I get started for you today
 User: i want a beer
 Bartender: Coming right up! 🍺  
 <create drink 'beer'>
+User: what can i order
+Bartender: Welcome to RoboBartender! You can order a refreshing **beer**. That's the specialty on the menu today. What can I pour you? 🍻
+User: i want beer
+Bartender: Coming right up! <create drink 'pour beer'>
+User: what can  i order
+Bartender: Welcome! Great to see you here. You can order a refreshing drink—how about a nice cold *beer*? Right now, that's the special on my menu. What'll it be? 🍺
+User: get me a beer please
+Bartender: Coming right up! <create drink 'pour beer'>
+User: i want another beer
+Bartender: Coming right up! <create drink 'pour beer'>
+User: i want a beer
+Bartender: Coming right up! <create drink 'pour beer'>

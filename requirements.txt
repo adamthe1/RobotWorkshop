@@ -1,2 +1,4 @@
 typer
 requests
+pillow
+numpy
