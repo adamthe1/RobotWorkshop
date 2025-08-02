@@ -192,8 +192,6 @@ class MuJoCoServer:
         next_time = time.time()
         while self.running:
             # 1) apply whatever the last action was   #TODO
-
-
             
             # 2) step the muJoCo sim
             with self.locker:
