@@ -14,7 +14,7 @@ class CameraRenderer:
         mujoco.mjv_defaultOption(self.opt)
 
         # Set up rendering context and scene
-        self.ctx = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150)
+        #self.ctx = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_150)
         self.scn = mujoco.MjvScene(model, maxgeom=1000)
         self.rgb_buffer = np.empty((self.height, self.width, 3), dtype=np.uint8)
 
@@ -27,6 +27,12 @@ class CameraRenderer:
             mujoco.mjv_cameraFromFixed(self.cam, model, data, cam_id)
         else:
             mujoco.mjv_defaultCamera(self.cam)
+
+    def set_camera(self, camera_name):
+        cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, camera_name)
+        if cam_id == -1:
+            raise ValueError(f"Camera '{camera_name}' not found in the model.")
+        mujoco.mjv_cameraFromFixed(self.cam, self.model, self.data, cam_id)
 
     def get_rgb_image(self):
         mujoco.mjv_updateScene(
@@ -41,5 +47,6 @@ class CameraRenderer:
             self.rgb_buffer, None,
             mujoco.MjrRect(0, 0, self.width, self.height),
             self.ctx
+            
         )
         return self.rgb_buffer.copy()
