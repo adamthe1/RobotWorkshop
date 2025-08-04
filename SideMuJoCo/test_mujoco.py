@@ -69,7 +69,7 @@ def main():
                 print("DEBUG: main - requesting state...")
                 state=send_and_recv(sock, Packet(robot_id="r1"))
                 print("DEBUG: main - received state:", state)
-                print(f"State → qname={state.joint_names} qpos={state.qpos}, qvel={state.qvel}, time={state.time}")
+                print(f"State → qname={state.joint_names} qpos={state.qpos}, qvel={state.qvel}, time={state.time} images={state.images}")
 
                 # 2) Send dummy action via Packet
                 qpos = state.qpos or np.array([])

@@ -26,13 +26,12 @@ class PhysicsStateExtractor:
             if jtype == mujoco.mjtJoint.mjJNT_FREE or jtype == mujoco.mjtJoint.mjJNT_BALL:
                 print(f"DEBUG: Skipping joint {jname} of type {jtype}") 
                 continue
-            
-           # if name.startswith(robot_id):
-
-            addr = self.model.jnt_qposadr[j] # co responding to 
-            qpos_list.append(self.data.qpos[addr])
-            qvel_list.append(self.data.qvel[addr])
-            joint_names.append(jname)
+            if jname.startswith(robot_id):
+                print(f"DEBUG: Processing joint {jname} for robot {robot_id}")
+                addr = self.model.jnt_qposadr[j] # co responding to 
+                qpos_list.append(self.data.qpos[addr])
+                qvel_list.append(self.data.qvel[addr])
+                joint_names.append(jname)
 
         return {
             'qpos': qpos_list,
