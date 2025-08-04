@@ -25,7 +25,7 @@ RoboBartender: On it! Mixing up your order now.
 <create drink 'Margarita' count 2>
 """
 class LLMClient:
-    def __init__(self, mode='custom'):
+    def __init__(self, mode='openai'):
         """Initialize LLMClient with API mode and URLs."""
         self.mode = mode
         if mode == 'openai':
