@@ -208,6 +208,14 @@
                     <geom mesh="link7_7" material="white" class="visual"/>
                     <geom mesh="link7_c" class="collision"/>
                     <body name="hand" pos="0 0 0.107" quat="0.9238795 0 0 -0.3826834">
+
+
+                      <camera name="cam1"
+                          pos="0 0 0.120"
+                          xyaxes="1 0 0   0 -1 0"/>
+
+                      
+
                       <inertial mass="0.73" pos="-0.01 0 0.03" diaginertia="0.001 0.0025 0.0017"/>
                       <geom mesh="hand_0" material="off_white" class="visual"/>
                       <geom mesh="hand_1" material="black" class="visual"/>
@@ -229,6 +237,8 @@
                         <geom class="fingertip_pad_collision_2"/>
                         <geom class="fingertip_pad_collision_3"/>
                         <geom name="left_finger_pad" class="fingertip_pad_collision_4"/>
+
+
                       </body>
                       <body name="right_finger" pos="0 0 0.0584" quat="0 0 0 1">
                         <inertial mass="0.015" pos="0 0 0" diaginertia="2.375e-6 2.375e-6 7.5e-7"/>
@@ -240,6 +250,7 @@
                         <geom class="fingertip_pad_collision_2"/>
                         <geom class="fingertip_pad_collision_3"/>
                         <geom name="right_finger_pad" class="fingertip_pad_collision_4"/>
+
                       </body>
                     </body>
                   </body>
