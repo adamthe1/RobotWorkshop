@@ -25,7 +25,7 @@ load_dotenv()
 
 class MuJoCoServer:
     def __init__(self, xml_path, host=os.getenv("MUJOCO_HOST", "localhost"), port=int(os.getenv("MUJOCO_PORT", 5555)),
-                 render_rgb=True, rgb_width=256, rgb_height=256):
+                 render_rgb=True, rgb_width=256, rgb_height=256, no_viewer=False):
         """
         Initialize MuJoCo server to run physics simulation and communicate
         with a client via TCP sockets.
@@ -57,6 +57,8 @@ class MuJoCoServer:
         self.rgb_width  = rgb_width
         self.rgb_height = rgb_height
         self.viewer     = None
+
+        self.no_viewer = no_viewer
 
         # Networking setup
         self.setup_socket()
@@ -143,7 +145,11 @@ class MuJoCoServer:
         """
         action = packet.action
         if action is None:
-            return
+            self.logger.warning("No action provided in packet, skipping apply_commands")
+            return packet
+        packet.action = None  # Clear action after applying
+        self.logger.debug(f"Applying action for robot {packet.robot_id}: {action}")
+        return packet  # Return the packet unchanged for now
 
     def fill_packet(self, packet):
         """
@@ -192,9 +198,8 @@ class MuJoCoServer:
                 if pkt is None:
                     break
                 elif pkt.action is not None:
-                    self.apply_commands(pkt)
+                    reply = self.apply_commands(pkt)
                     self.step_once()
-                    reply = {'status': 'ok'}
                 elif pkt.robot_id == 'robot_list':
                     reply = self.fill_robot_list(pkt)
                 else:
@@ -217,7 +222,8 @@ class MuJoCoServer:
                 mujoco.mj_step(self.model, self.data)
 
             # 3) redraw viewer (passive or active)
-            self.update_viewer()
+            if self.no_viewer is False:
+                self.update_viewer()
 
             # 4) sleep until next frame
             next_time += dt
@@ -225,8 +231,9 @@ class MuJoCoServer:
 
     def run(self):
         """Start viewer thread, accept one client, and dispatch"""
-        t = threading.Thread(target=self.start_viewer, daemon=True)
-        t.start()
+        if not self.no_viewer:
+            t = threading.Thread(target=self.start_viewer, daemon=True)
+            t.start()
 
         sim_t = threading.Thread(target=self.simulation_thread, daemon=True)
         sim_t.start()
@@ -320,5 +327,5 @@ class MujocoClient:
 
 if __name__ == '__main__':
     model_path = find_model_path()
-    server = MuJoCoServer(model_path)
+    server = MuJoCoServer(model_path, no_viewer=True)
     server.run()

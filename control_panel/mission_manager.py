@@ -20,13 +20,13 @@ class MissionManager:
         self.queue_client.connect()
         self.logger.info("Queue client connected successfully")
 
-    def set_robot_list(self, robot_list):
+    @staticmethod
+    def set_robot_list(robot_list):
         """Set the list of robots managed by this MissionManager."""
-        self.logger.info(f"Setting robot_list to: {robot_list!r}")
         if not isinstance(robot_list, list):
-            self.logger.error("robot_list must be a list")
             raise ValueError("robot_list must be a list")
-        self.queue_client.add_robot_ids(robot_list)
+        with QueueClient() as connection:
+            connection.add_robot_ids(robot_list)
 
     def get_supported_missions(self):
         """Return a numbered string of supported missions."""
@@ -37,19 +37,28 @@ class MissionManager:
         """Return list of submissions for the given mission."""
         return SUPPORTED_MISSIONS.get(mission, [])
 
-    def get_next_submission(self, mission, current_submission):
-        """Return next submission for mission or None if finished."""
-        submissions = SUPPORTED_MISSIONS.get(mission, [])
-        if current_submission is None:
-            return submissions[0] if submissions else None
-        idx = submissions.index(current_submission)
-        if idx + 1 < len(submissions):
-            return submissions[idx + 1]
-        return None 
+    def get_next_submission(self, packet):
+        """Return next submission for mission"""
+        submissions = SUPPORTED_MISSIONS.get(packet.mission, [])
+        if packet.submission is None:
+            if not submissions:
+                self.logger.error(f"No submissions found for mission {packet.mission}")
+                raise ValueError("No submissions available for this mission")
+            packet.submission = submissions[0]
+            return packet
 
-    def reset_before_new_mission(self):
+        idx = submissions.index(packet.submission)
+        if idx + 1 < len(submissions):
+            packet.submission = submissions[idx + 1]
+            return packet
+        else:
+            self.logger.error(f"idx for mission {packet.mission} is out of range")
+            raise ValueError("No more submissions available for this mission")
+
+
+    def is_last_submission(self, packet):
         """Return command to reset before starting a new mission."""
-        return "reset before new mission"
+        return packet.submission == SUPPORTED_MISSIONS.get(packet.mission, [])[-1]
     
     def get_next_mission(self, robot_id):
         """
@@ -57,44 +66,46 @@ class MissionManager:
         """
         if self.queue_client.get_robot_lock(robot_id) == 1:
             self.logger.error('Not supposed to be locked')
-            return None
+            return {'robot_id': None, 'mission': None}
         if self.queue_client.see_next_robot() == robot_id:
             # remove mission from queue
-            result = self.queue_client.get_robot_mission_pair()
-            mission = result['mission']
-            robot_id_result = result['robot_id']
-            if robot_id_result != robot_id:
-                self.logger.error('Got different robot than needed for mission')
-                raise
-            return mission
+            return self.queue_client.get_robot_mission_pair()
         else:
-            return None
+            return {'robot_id': None, 'mission': None}
 
-    def manage_mission(self, robot_status):
+    def manage_mission(self, packet):
         """Manage mission based on robot status and return next submission or reset command."""
-        if not robot_status or 'current_mission' not in robot_status:
-            raise ValueError("Invalid robot status provided")
-        if not self.vision_model:
-            raise ValueError("No vision model set for status checking")
+        if not packet or packet.mission is None:
+            raise ValueError("Invalid packet provided")
         
-        result = self.status_checker.sub_mission_status(robot_status)
-
-        if not result['done']:
-            return robot_status['current_submission']
-        
-        if result['done'] == 'reset':
-            # this means the robot is reset and ready for a new mission
-            next_mission = self.get_next_mission()
-            if next_mission is None:
-                return None # No more missions in queue, robot in standby
-            return self.get_next_submission(next_mission, None)
+        if packet.submission is None:
             
-        next_sub = self.get_next_submission(robot_status['current_mission'], robot_status['current_submission'])
-        if next_sub is None:
-            return self.reset_before_new_mission()
-        return next_sub
+            packet = self.get_next_submission(packet)
+            self.logger.debug(f"adding first submission to packet {packet.submission} for mission {packet.mission}")
+            return packet
+        
+        result = self.status_checker.sub_mission_status(packet)
+
+        if result['done']:
+            if self.is_last_submission(packet):
+                self.logger.info(f"Mission {packet.mission} completed for robot {packet.robot_id}")
+                packet.mission = None
+                self.put_robot_in_queue(packet.robot_id)
+                self.status_checker.submission_counter.clear()  # Reset counter after mission completion
+                return packet
+            else:
+                packet = self.get_next_submission(packet)
+                return packet
+            
+        return packet
     
-    
+    def put_robot_in_queue(self, robot_id):
+        """Put robot back in queue after mission completion."""
+        self.logger.info(f"Putting robot {robot_id} back in queue")
+        self.queue_client.enqueue_robot(robot_id)
+        return
+
+
     def get_robot_from_queue(self):
         """Find a free robot that is not currently processing a mission."""
         return self.queue_client.get_robot_from_queue()

@@ -26,7 +26,6 @@ class MainOrchestrator:
         self.mujoco_process = None
         self.cli_process = None
         self.mujoco_client = MujocoClient()
-        self.mission_manager = MissionManager()
         self.running = True
         
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -44,6 +43,7 @@ class MainOrchestrator:
             "-m", "mujoco_folder.mujoco_server"
         ], cwd=str(project_root))
 
+
     def start_queue_server(self):
         self.logger.info("Starting Queue server...")
         project_root = Path(__file__).resolve().parent  # .../autonomous
@@ -53,6 +53,16 @@ class MainOrchestrator:
             env={**os.environ, "PYTHONPATH": str(project_root)}
         )
         time.sleep(2)
+    
+    def start_logging_server(self):
+        print("Starting Logging server...")
+        project_root = Path(__file__).resolve().parent
+        self.logging_process = subprocess.Popen([
+            sys.executable,
+            "-m", "logger_config"
+        ], cwd=str(project_root))
+        time.sleep(1)  # Give server time to start
+
 
 
     def start_cli(self):
@@ -87,71 +97,70 @@ class MainOrchestrator:
         pass
 
                     
-    def inference_loop(self, robot_id):
+    def inference_loop(self, robot_id, mission_manager, tries=3):
         self.logger.info("Starting inference loop for robot: %s", robot_id)
 
         # Step 0: Start an empty packet with robot id
         packet = Packet(robot_id=robot_id)
         while packet.mission is None:
-            self.mission_manager.get_next_mission(robot_id)
-            time.sleep(0.3)
+            #self.logger.debug(f"Waiting for mission for robot {robot_id}...")
+            result = mission_manager.get_next_mission(robot_id)
+            if result['robot_id'] is not None and result['robot_id'] != robot_id:
+                self.logger.error(f'Robot ID in mission pair is not the one needed {result}')
+                raise
+            packet.mission = result['mission']
 
-        while True:
-            pass
+            time.sleep(0.3)
+        
+        self.logger.info(f"Robot {robot_id} assigned mission: {packet.mission}")
+
         while self.running:
             try:
-
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
-                self.mujoco_client.send_packet(packet)
-                robot_state = self.mujoco_client.recv_packet()
-                if robot_state is None:
+                packet = self.mujoco_client.send_and_recv(packet)
+                self.logger.debug(f"{robot_id} Received robot state")
+                if packet is None:
+                    self.logger.warning(f"Robot {robot_id} state is None, skipping...")
+                    time.sleep(0.1)
                     continue
                     
-                # Add mission context to robot state
-                robot_state.current_mission = current_mission
-                robot_state.current_submission = current_submission
-                
                 # Step 3: Send to mission analyzer, get mission state
-                mission_result = self.mission_manager.manage_mission({
-                    'current_mission': current_mission,
-                    'current_submission': current_submission,
-                    'robot_state': robot_state
-                })
-                
-                # Step 4: Send to submission get submission
-                if mission_result is None:
-                    current_mission = None
-                    current_submission = None
-                    continue
-                elif mission_result == "reset before new mission":
-                    current_mission = None
-                    current_submission = None
-                    continue
-                else:
-                    current_submission = mission_result
+                packet = mission_manager.manage_mission(packet)
+
+                if packet.mission is None:
+                    self.logger.info(f"Robot {robot_id} has no mission, reset for next mission")
+                    self.inference_loop(robot_id, mission_manager)
                 
                 # TODO: Step 5: Send to policy, get action
                 # This is where the policy inference will happen
                 # For now, using dummy action
                 dummy_action = [0.0] * 7  # 7-DOF robot arm
-                self.logger.info(f"TODO: Policy inference for submission '{current_submission}'")
-                self.logger.debug(f"TODO: Using dummy action: {dummy_action}")
+  
                 
                 # Step 6: Send to mujoco server map actions loop
-                action_result = self.mujoco_client.send_action(robot_id, dummy_action)
-                self.logger.debug(f"Action sent, result: {action_result}")
-                
+                packet.action = dummy_action
+                packet = self.mujoco_client.send_and_recv(packet)
+                self.logger.debug(f"{robot_id}Action sent, result: {packet.action}")
+
                 time.sleep(0.1)
                 
             except Exception as e:
                 self.logger.error(f"Error in inference loop: {e}")
                 time.sleep(1)
+                self.logger.info(f"Retrying inference loop for robot {robot_id}, attempt {tries}")
+                tries -= 1
+                if tries <= 0:
+                    self.logger.error(f"Max retries reached for robot {robot_id}, exiting loop")
+                    raise
+                self.inference_loop(robot_id, mission_manager, tries)
                 
     def run(self):
         try:
+            self.start_logging_server()  # Start this first
             self.start_mujoco_server()
             self.start_queue_server()
-            time.sleep(1)
+            
+            time.sleep(2)
             self.connect_to_mujoco()
             self.connect_to_brain()
             self.robot_list = self.mujoco_client.recv_robot_list()
@@ -159,15 +168,16 @@ class MainOrchestrator:
                 self.logger.error("No robots found in the robot list")
                 return
                 
-            
-            self.mission_manager.set_robot_list(self.robot_list)
             self.logger.info(f"Robot list received: {self.robot_list}")
+            MissionManager.set_robot_list(self.robot_list)
+            
 
             for robot_id in self.robot_list:
                 self.logger.info(f"Robot {robot_id} is ready for missions")
-                inference_thread = threading.Thread(target=self.inference_loop, daemon=True, args=(robot_id,))
+                manager = MissionManager()
+                inference_thread = threading.Thread(target=self.inference_loop, daemon=True, args=(robot_id, manager))
                 inference_thread.start()
-            
+
             self.start_cli()
             
             while self.running:
@@ -211,7 +221,14 @@ class MainOrchestrator:
                 self.queue_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.queue_process.kill()
-        self.logger.info("Shutdown complete")
+        
+        if self.logging_process:
+            self.logging_process.terminate()
+            try:
+                self.logging_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.logging_process.kill()
+        print("All processes terminated, exiting...")
         sys.exit(0)
 
 if __name__ == '__main__':

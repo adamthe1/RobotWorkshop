@@ -3,11 +3,22 @@ import threading
 import json
 import queue
 from collections import deque
+import struct
 from dotenv import load_dotenv
 import os
 from logger_config import get_logger
-
+import time
 load_dotenv()
+
+def _recvall(sock, n):
+    """Helper to receive exactly n bytes"""
+    buf = b''
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            return None
+        buf += chunk
+    return buf
 
 class QueueServer:
     def __init__(self):
@@ -26,6 +37,8 @@ class QueueServer:
         
         self.running = False
         self.server_socket = None
+        self.logger = get_logger('QueueServer')    # ← add this
+        
         
     def start_server(self):
         """Start the queue server."""
@@ -45,26 +58,42 @@ class QueueServer:
                 )
                 client_thread.start()
             except OSError:
+                if self.running:  # Only log if not intentionally stopping
+                    self.logger.error("Server socket error")
                 break
                 
     def handle_client(self, client_socket, address):
-        """Handle client requests."""
+        """Handle client requests with proper message framing."""
         try:
             while True:
-                data = client_socket.recv(1024).decode('utf-8')
+                # Read 4-byte length prefix
+                raw_len = _recvall(client_socket, 4)
+                if not raw_len:
+                    break
+                msg_len = struct.unpack('!I', raw_len)[0]
+                
+                # Read the JSON payload
+                data = _recvall(client_socket, msg_len)
                 if not data:
                     break
                 
                 try:
-                    request = json.loads(data)
+                    request = json.loads(data.decode('utf-8'))
                     response = self.process_request(request)
-                    client_socket.send(json.dumps(response).encode('utf-8'))
+                    
+                    # Send response with length prefix
+                    resp_bytes = json.dumps(response).encode('utf-8')
+                    client_socket.sendall(struct.pack('!I', len(resp_bytes)) + resp_bytes)
+                    
                 except json.JSONDecodeError:
                     error_response = {"status": "error", "message": "Invalid JSON"}
-                    client_socket.send(json.dumps(error_response).encode('utf-8'))
+                    resp_bytes = json.dumps(error_response).encode('utf-8')
+                    client_socket.sendall(struct.pack('!I', len(resp_bytes)) + resp_bytes)
                     
-        except ConnectionResetError:
-            pass
+        except (ConnectionResetError, BrokenPipeError):
+            self.logger.error(f"Client {address} disconnected")
+        except Exception as e:
+            self.logger.error(f"Error handling client {address}: {e}")
         finally:
             client_socket.close()
             
@@ -129,7 +158,7 @@ class QueueServer:
                     added_robots.append(robot_id)
                 else:
                     skipped_robots.append(robot_id)
-        
+        self.logger.info(f"Added robots: {added_robots}, Skipped robots: {skipped_robots}")
         return {
             "status": "success",
             "message": f"Added {len(added_robots)} robots",
@@ -259,7 +288,8 @@ class QueueClient:
             self.socket.connect((self.host, self.port))
             return True
         except ConnectionRefusedError:
-            print(f"Could not connect to queue server at {self.host}:{self.port}")
+            self.logger.error(f"Could not connect to queue server at {self.host}:{self.port}")
+            time.sleep(1)  # Retry after a short delay
             return False
     
     def disconnect(self):
@@ -268,25 +298,52 @@ class QueueClient:
             self.socket.close()
             self.socket = None
     
-    def _send_request(self, request):
-        """Send request to server and get response."""
-        if not self.socket:
-            if not self.connect():
-                return {"status": "error", "message": "Not connected to server"}
+    def _send_request(self, request, tries=0):
+        """Send request to server and get response with proper framing."""
+        if not self.socket and not self.connect():
+            return {"status": "error", "message": "Not connected to server"}
         
         try:
-            self.socket.send(json.dumps(request).encode('utf-8'))
-            response = self.socket.recv(1024).decode('utf-8')
-            return json.loads(response)
-        except (ConnectionResetError, BrokenPipeError):
+            self.logger.debug(f"Sending request: {request}")
+            # Send with length prefix
+            payload = json.dumps(request).encode('utf-8')
+            self.socket.sendall(struct.pack('!I', len(payload)) + payload)
+            
+            # Read response length
+            raw_len = _recvall(self.socket, 4)
+            if not raw_len:
+                self.logger.error("No response length received")
+                return {"status": "error", "message": "No response length"}
+            resp_len = struct.unpack('!I', raw_len)[0]
+            
+            # Read response payload
+            resp_data = _recvall(self.socket, resp_len)
+            if not resp_data:
+                self.logger.error("No response data received")
+                return {"status": "error", "message": "Incomplete response"}
+            
+            self.logger.debug(f"Received response: {resp_data.decode('utf-8')}")
+            return json.loads(resp_data.decode('utf-8'))
+            
+        except (ConnectionResetError, BrokenPipeError) as e:
+            self.logger.warning(f"Connection error: {e}, attempting reconnect")
             # Try to reconnect once
             self.socket = None
             if self.connect():
-                self.socket.send(json.dumps(request).encode('utf-8'))
-                response = self.socket.recv(1024).decode('utf-8')
-                return json.loads(response)
+                self.logger.info("Reconnected to server, retrying request")
+                return self._send_request(request)  # Recursive retry
             else:
+                self.logger.error("Failed to reconnect to server")
                 return {"status": "error", "message": "Connection lost"}
+        except Exception as e:
+            self.logger.error(f"Request error: {e} {request}")
+            if tries < 3:
+                self.logger.info(f"Retrying request ({tries + 1}/3)")
+                time.sleep(1)
+                return self._send_request(request, tries + 1)
+            else:
+                return {"status": "error", "message": f"Request failed: {e}"}
+
     
     def get_robot_mission_pair(self):
         """Get a robot-mission pair atomically."""
@@ -294,6 +351,7 @@ class QueueClient:
         response = self._send_request(request)
         
         if response.get("status") == "success":
+            self.logger.info(f"Got robot-mission pair: {response}")
             return {
                 "robot_id": response.get("robot_id"),
                 "mission": response.get("mission")
@@ -308,6 +366,7 @@ class QueueClient:
     def enqueue_mission(self, mission):
         """Add mission to queue."""
         request = {"action": "enqueue_mission", "mission": mission}
+        self.logger.info(f"Enqueuing mission: {mission}")
         return self._send_request(request)
     
     def get_mission_from_queue(self):
@@ -348,7 +407,7 @@ class QueueClient:
         request = {"action": "set_robot_lock", "robot_id": robot_id, "lock_state": lock_state}
         return self._send_request(request)
     
-    def release_robot(self, robot_id):
+    def enqueue_robot(self, robot_id):
         """Release robot back to free robot queue."""
         request = {"action": "enqueue_robot", "robot_id": robot_id}
         return self._send_request(request)

@@ -3,6 +3,7 @@ from PIL import Image
 
 from dotenv import load_dotenv
 import os
+from logger_config import get_logger
 
 load_dotenv()
 
@@ -17,9 +18,11 @@ class DummyVisionModel:
 class MissionStatus:
     def __init__(self):
 
-        self.vision_model = DummyVisionModel(os.getenv("VISION_MODEL_PATH", 'dummy'))
+        self.vision_model = None # DummyVisionModel(os.getenv("VISION_MODEL_PATH", 'dummy'))
+        self.submission_counter = {}  # this is only for debugging
+        self.logger = get_logger('MissionStatus')
 
-    def sub_mission_status(self, robot_status):
+    def sub_mission_status(self, packet):
         """
         robot_status: dict with keys like
             - 'image': np.ndarray or PIL.Image
@@ -29,7 +32,16 @@ class MissionStatus:
         Returns:
             - {'subtask': predicted_submission, 'done': bool}
         """
-        img = robot_status['image']
+        if self.vision_model is None:
+            if packet.submission in self.submission_counter:
+                self.submission_counter[packet.submission] += 1
+                if self.submission_counter[packet.submission] > 10:
+                    self.logger.debug(f"Submission {packet.submission} has been repeated more than 10 times, go to next.")
+                    return {'subtask': packet.submission, 'done': True}
+            else:
+                self.submission_counter[packet.submission] = 1
+            return {'subtask': packet.submission, 'done': False}
+        img = packet
         if isinstance(img, np.ndarray):
             img = Image.fromarray(img)
         # Predict submission and completion using the vision model

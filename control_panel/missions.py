@@ -3,6 +3,7 @@ SUPPORTED_MISSIONS = {
         "pick up yellow bottle",
         "pour bottle into cup",
         "stop pouring bottle",
-        "put down bottle"
+        "put down bottle",
+        "reset before new mission"
     ]
 }
