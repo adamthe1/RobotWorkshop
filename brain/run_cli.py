@@ -1,34 +1,28 @@
 import typer
 from control_panel.LLM import LLMClient
-from control_panel.robot_queue import RobotQueue
 import re
 from logger_config import get_logger
+from control_panel.mission_manager import MissionManager
 
 app = typer.Typer()
 
 @app.command()
 def order_drink():
     """Chat with the robot bartender and order a drink."""
-    logger = get_logger('CLI')
-    logger.info("Starting CLI drink ordering interface")
-    
+
     client = LLMClient()
-    robot_queue = RobotQueue(['robot_1'])
     MAX_JOBS = 1
     typer.echo('Welcome to RoboBartender!')
     
     while True:
         user_input = typer.prompt('What would you like to say?')
-        logger.info(f"User input: {user_input}")
-        
+
         response = client.send_message(user_input)
         # Prefer OpenAI style, fallback to your backend
         try:
             message = response['choices'][0]['message']['content']
         except (KeyError, IndexError):
             message = response.get('content',[{'text':''}])[0]['text']
-        
-        logger.info(f"LLM response: {message}")
         
         # Remove <create drink ...> before displaying to user
         visible_message = re.sub(r'<create drink ["\'](.+?)["\']>', '', message).strip()

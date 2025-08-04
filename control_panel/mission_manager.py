@@ -1,18 +1,32 @@
 from .missions import SUPPORTED_MISSIONS
 
 import queue
-from .missions import SUPPORTED_MISSIONS
-from .mission_status import MissionStatus
-from .args import VISION_WEIGHTS_PATH
+from control_panel.missions import SUPPORTED_MISSIONS
+from control_panel.mission_status import MissionStatus
+from control_panel.robot_queue_locks import QueueServer, QueueClient
+from dotenv import load_dotenv
+import os
+from logger_config import get_logger
 
+load_dotenv()
 
 class MissionManager:
     def __init__(self):
         """Initialize MissionManager, load status checker, and mission queue."""
-        self.mission_queue = queue.Queue()
+        self.logger = get_logger('MissionManager')
+        self.queue_client = QueueClient()
         self.status_checker = MissionStatus()
+        self.logger.info("Queue server started successfully")
+        self.queue_client.connect()
+        self.logger.info("Queue client connected successfully")
 
-        self.status_checker = MissionStatus()
+    def set_robot_list(self, robot_list):
+        """Set the list of robots managed by this MissionManager."""
+        self.logger.info(f"Setting robot_list to: {robot_list!r}")
+        if not isinstance(robot_list, list):
+            self.logger.error("robot_list must be a list")
+            raise ValueError("robot_list must be a list")
+        self.queue_client.add_robot_ids(robot_list)
 
     def get_supported_missions(self):
         """Return a numbered string of supported missions."""
@@ -37,15 +51,24 @@ class MissionManager:
         """Return command to reset before starting a new mission."""
         return "reset before new mission"
     
-    def add_mission_to_queue(self, mission):
-        """Add mission name to the mission queue."""
-        self.mission_queue.put(mission)
-
-    def get_next_mission(self):
-        """Return (without removing) the next mission from the queue or None."""
-        if not self.mission_queue.empty():
-            return self.mission_queue.queue
-        return None
+    def get_next_mission(self, robot_id):
+        """
+        If block=True, will block until an item is available
+        """
+        if self.queue_client.get_robot_lock(robot_id) == 1:
+            self.logger.error('Not supposed to be locked')
+            return None
+        if self.queue_client.see_next_robot() == robot_id:
+            # remove mission from queue
+            result = self.queue_client.get_robot_mission_pair()
+            mission = result['mission']
+            robot_id_result = result['robot_id']
+            if robot_id_result != robot_id:
+                self.logger.error('Got different robot than needed for mission')
+                raise
+            return mission
+        else:
+            return None
 
     def manage_mission(self, robot_status):
         """Manage mission based on robot status and return next submission or reset command."""
@@ -60,7 +83,7 @@ class MissionManager:
             return robot_status['current_submission']
         
         if result['done'] == 'reset':
-            # this means the robot is reset and reaqy for a new mission
+            # this means the robot is reset and ready for a new mission
             next_mission = self.get_next_mission()
             if next_mission is None:
                 return None # No more missions in queue, robot in standby
@@ -70,3 +93,10 @@ class MissionManager:
         if next_sub is None:
             return self.reset_before_new_mission()
         return next_sub
+    
+    
+    def get_robot_from_queue(self):
+        """Find a free robot that is not currently processing a mission."""
+        return self.queue_client.get_robot_from_queue()
+
+

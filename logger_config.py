@@ -47,7 +47,9 @@ class GlobalLogger:
         logging.getLogger('MainOrchestrator').setLevel(logging.INFO)
         logging.getLogger('CLI').setLevel(logging.INFO)
         logging.getLogger('MissionManager').setLevel(logging.INFO)
-    
+        logging.getLogger('MujocoServer').setLevel(logging.INFO)
+        logging.getLogger('MujocoClient').setLevel(logging.INFO)
+
     def get_logger(self, name):
         return logging.getLogger(name)
 

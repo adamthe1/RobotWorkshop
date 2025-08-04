@@ -12,13 +12,19 @@ import time
 import threading
 import numpy as np
 from pathlib import Path
-from packet_example import Packet
+from .packet_example import Packet
 
 import mujoco
 import mujoco.viewer
+from logger_config import get_logger
+
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 class MuJoCoServer:
-    def __init__(self, xml_path, host='localhost', port=5555,
+    def __init__(self, xml_path, host=os.getenv("MUJOCO_HOST", "localhost"), port=int(os.getenv("MUJOCO_PORT", 5555)),
                  render_rgb=True, rgb_width=256, rgb_height=256):
         """
         Initialize MuJoCo server to run physics simulation and communicate
@@ -31,15 +37,16 @@ class MuJoCoServer:
         self.locker = threading.Lock()
         self.client_socket = None
         self.server_socket = None
+        self.logger = get_logger('MujocoServer')
 
         # Load MuJoCo model (real)
-        print(f"Loading MuJoCo model from: {xml_path}")
+        self.logger.info(f"Loading MuJoCo model from: {xml_path}")
         model_path = Path(xml_path)
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {xml_path}")
         self.model = mujoco.MjModel.from_xml_path(str(model_path))
         self.data  = mujoco.MjData(self.model)
-        print("Model and data initialized successfully")
+        self.logger.info("Model and data initialized successfully")
 
         # Set initial pose (real)
         self.data.qpos[2] = 1.0
@@ -63,7 +70,7 @@ class MuJoCoServer:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(1)
-        print(f"Server listening on {self.host}:{self.port}")
+        
 
 
 
@@ -78,15 +85,25 @@ class MuJoCoServer:
     def start_viewer(self):
         """Launch MuJoCo passive viewer in background thread"""
         try:
-            print("Launching MuJoCo viewer...")
+            self.logger.info("Launching MuJoCo viewer...")
             self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
             time.sleep(0.5)
-            print("Viewer initialized successfully")
+            self.logger.info("Viewer initialized successfully")
         except Exception as e:
-            print(f"Warning: Failed to initialize viewer: {e}")
+            self.logger.warning(f"Failed to initialize viewer: {e}")
             self.viewer = None
 
+    def fill_robot_list(self, packet):
+        """
+        Fill the packet with a dummy robot list.
+        This is a stub method that simulates receiving a list of robots.
+        """
+        packet.robot_list = self.get_robot_list()
+        return packet
 
+    def get_robot_list(self):
+        """Return a list of robot IDs (stubbed)"""
+        return ['robot_1', 'robot_2']
 
     def step_once(self):
         """Advance the physics by one timestep"""
@@ -168,23 +185,25 @@ class MuJoCoServer:
         Handle incoming RPCs: 'action' → apply+step, else → return state
         """
         self.client_socket = client_socket
-        print(f"Client connected: {addr}")
+        self.logger.info(f"Client connected: {addr}")
         try:
             while True:
                 pkt: Packet = self._recv_packet()
                 if pkt is None:
                     break
-                if pkt.action is not None:
+                elif pkt.action is not None:
                     self.apply_commands(pkt)
                     self.step_once()
                     reply = {'status': 'ok'}
+                elif pkt.robot_id == 'robot_list':
+                    reply = self.fill_robot_list(pkt)
                 else:
                     reply = self.fill_packet(pkt)
                 self._send_packet(reply)
         except Exception as e:
-            print(f"Error in client loop: {e}")
+            self.logger.error(f"Error in client loop: {e}")
         finally:
-            print("Client disconnected")
+            self.logger.info("Client disconnected")
             self.close()
 
     def simulation_thread(self, control_hz=60):
@@ -217,7 +236,7 @@ class MuJoCoServer:
 
     def close(self):
         """Cleanup sockets and viewer"""
-        print("Shutting down server...")
+        self.logger.info("Shutting down server...")
         self.running = False
         if self.client_socket:
             self.client_socket.close()
@@ -232,17 +251,74 @@ def find_model_path():
     """
     Find the MuJoCo model path using a default location
     """
+    env_model_path = os.getenv("MUJOCO_MODEL_PATH")
+    if env_model_path and os.path.exists(env_model_path):
+        return env_model_path
     default_path = "/home/adam/Documents/coding/autonomous/franka_emika_panda/mjx_scene.xml"
     if os.path.exists(default_path):
         return default_path
     raise FileNotFoundError("Could not find model file at default path")
 
-if __name__ == '__main__':
-    import argparse
-    parser = argparse.ArgumentParser(description="MuJoCo Server for Robot Control")
-    parser.add_argument('--model', type=str, help="Path to MuJoCo XML model file")
-    args = parser.parse_args()
+class MujocoClient:
+    def __init__(self):
+        self.host = os.getenv("MUJOCO_HOST", "localhost")
+        self.port = int(os.getenv("MUJOCO_PORT", 5555))
+        self.socket = None
+        self.logger = get_logger('MujocoClient')
+        
+    def connect(self):
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((self.host, self.port))
+        self.logger.info(f"Connected to MuJoCo server at {self.host}:{self.port}")
+    
+    def recv_robot_list(self):
+        """
+        Receive the list of robots from the server.
+        """
+        packet = self.send_and_recv(Packet(robot_id='robot_list'))
+        if packet is None:
+            self.logger.error("Failed to receive robot list")
+            raise ConnectionError("Failed to receive robot list")
+        return packet.robot_list
+        
+    def send_and_recv(self, packet):
+        """
+        Send a pickled packet and receive the pickled reply, with debug logs.
+        """
+        sock = self.socket
+        if sock is None:
+            raise ConnectionError("Socket is not connected")
+        try:
+            self.logger.debug(f"send_and_recv - sending packet: {packet}")
+            data_out = pickle.dumps(packet)
+            sock.sendall(struct.pack('!I', len(data_out)) + data_out)
 
-    model_path = args.model if args.model else find_model_path()
-    server = MuJoCoServer(model_path, host='localhost', port=5555)
+            # Read length prefix
+            size_data = sock.recv(4)
+            if not size_data:
+                raise ConnectionError("No data received for length prefix")
+            size = struct.unpack('!I', size_data)[0]
+            self.logger.debug(f"send_and_recv - expecting {size} bytes reply")
+            # Read the full reply
+            buf = b''
+            while len(buf) < size:
+                chunk = sock.recv(size - len(buf))
+                if not chunk:
+                    raise ConnectionError("Incomplete payload: connection closed")
+                buf += chunk
+            reply = pickle.loads(buf)
+            self.logger.debug(f"send_and_recv - received reply: {reply}")
+            return reply
+        except Exception:
+            self.logger.error("Exception in send_and_recv", exc_info=True)
+            raise
+        
+    def close(self):
+        if self.socket:
+            self.socket.close()
+
+
+if __name__ == '__main__':
+    model_path = find_model_path()
+    server = MuJoCoServer(model_path)
     server.run()

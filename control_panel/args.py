@@ -1,1 +1,0 @@
-VISION_WEIGHTS_PATH = '/path/to/your/weights.pth'

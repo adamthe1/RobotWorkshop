@@ -8,48 +8,16 @@ import time
 import threading
 import signal
 import sys
-from control_panel.robot_queue import RobotQueue
 from control_panel.mission_manager import MissionManager
-from packet_example import Packet
+from mujoco_folder.packet_example import Packet
 from logger_config import get_logger
+from dotenv import load_dotenv
+import os
+from mujoco_folder.mujoco_server import MujocoClient
+from pathlib import Path
 
-class MujocoClient:
-    def __init__(self, host='localhost', port=5555):
-        self.host = host
-        self.port = port
-        self.socket = None
-        
-    def connect(self):
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.connect((self.host, self.port))
-        
-    def _send_packet(self, packet):
-        data = pickle.dumps(packet)
-        self.socket.sendall(struct.pack('!I', len(data)) + data)
-        
-    def _recv_packet(self):
-        size_data = self.socket.recv(4)
-        if not size_data:
-            return None
-        size = struct.unpack('!I', size_data)[0]
-        buf = b''
-        while len(buf) < size:
-            buf += self.socket.recv(size - len(buf))
-        return pickle.loads(buf)
-        
-    def get_robot_state(self, robot_id):
-        packet = Packet(robot_id=robot_id)
-        self._send_packet(packet)
-        return self._recv_packet()
-        
-    def send_action(self, robot_id, action):
-        packet = Packet(robot_id=robot_id, action=action)
-        self._send_packet(packet)
-        return self._recv_packet()
-        
-    def close(self):
-        if self.socket:
-            self.socket.close()
+
+load_dotenv()
 
 class MainOrchestrator:
     def __init__(self):
@@ -58,7 +26,6 @@ class MainOrchestrator:
         self.mujoco_process = None
         self.cli_process = None
         self.mujoco_client = MujocoClient()
-        self.robot_queue = RobotQueue(['robot_1'])
         self.mission_manager = MissionManager()
         self.running = True
         
@@ -71,16 +38,32 @@ class MainOrchestrator:
         
     def start_mujoco_server(self):
         self.logger.info("Starting MuJoCo server...")
+        project_root = Path(__file__).resolve().parent  # .../autonomous
         self.mujoco_process = subprocess.Popen([
-            sys.executable, 'mujoco_server.py'
-        ])
+            sys.executable,
+            "-m", "mujoco_folder.mujoco_server"
+        ], cwd=str(project_root))
+
+    def start_queue_server(self):
+        self.logger.info("Starting Queue server...")
+        project_root = Path(__file__).resolve().parent  # .../autonomous
+        self.queue_process = subprocess.Popen(
+            [sys.executable, "-m", "control_panel.robot_queue_locks"],
+            cwd=project_root,
+            env={**os.environ, "PYTHONPATH": str(project_root)}
+        )
         time.sleep(2)
-        
+
+
     def start_cli(self):
         self.logger.info("Starting CLI...")
-        self.cli_process = subprocess.Popen([
-            sys.executable, 'run.py'
-        ])
+        repo_root = Path(__file__).resolve().parent  # .../autonomous
+
+        self.brain_process = subprocess.Popen(
+            [sys.executable, "-m", "brain.run_cli"],
+            cwd=str(repo_root),
+            env={**os.environ, "PYTHONPATH": str(repo_root)}
+        )
         
     def connect_to_mujoco(self):
         self.logger.info("Connecting to MuJoCo server...")
@@ -96,29 +79,31 @@ class MainOrchestrator:
                     time.sleep(1)
                 else:
                     raise
+
+    def connect_to_brain(self):
+        self.logger.info("Connecting to brain...")
+        # Placeholder for brain connection logic
+        # This could be a separate client connection or API call
+        pass
+
                     
-    def inference_loop(self):
-        self.logger.info("Starting inference loop...")
-        robot_id = 'robot_1'
-        current_mission = None
-        current_submission = None
-        
+    def inference_loop(self, robot_id):
+        self.logger.info("Starting inference loop for robot: %s", robot_id)
+
+        # Step 0: Start an empty packet with robot id
+        packet = Packet(robot_id=robot_id)
+        while packet.mission is None:
+            self.mission_manager.get_next_mission(robot_id)
+            time.sleep(0.3)
+
+        while True:
+            pass
         while self.running:
             try:
+
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
-                if current_mission is None:
-                    mission = self.robot_queue.dequeue_mission(robot_id)
-                    if mission:
-                        current_mission = mission
-                        current_submission = None
-                        self.logger.info(f"Assigned mission '{mission}' to {robot_id}")
-                
-                if current_mission is None:
-                    time.sleep(0.1)
-                    continue
-                    
-                # Step 2: Send empty packet with robot id to robot, get robot state
-                robot_state = self.mujoco_client.get_robot_state(robot_id)
+                self.mujoco_client.send_packet(packet)
+                robot_state = self.mujoco_client.recv_packet()
                 if robot_state is None:
                     continue
                     
@@ -165,10 +150,23 @@ class MainOrchestrator:
     def run(self):
         try:
             self.start_mujoco_server()
+            self.start_queue_server()
+            time.sleep(1)
             self.connect_to_mujoco()
+            self.connect_to_brain()
+            self.robot_list = self.mujoco_client.recv_robot_list()
+            if not self.robot_list:
+                self.logger.error("No robots found in the robot list")
+                return
+                
             
-            inference_thread = threading.Thread(target=self.inference_loop, daemon=True)
-            inference_thread.start()
+            self.mission_manager.set_robot_list(self.robot_list)
+            self.logger.info(f"Robot list received: {self.robot_list}")
+
+            for robot_id in self.robot_list:
+                self.logger.info(f"Robot {robot_id} is ready for missions")
+                inference_thread = threading.Thread(target=self.inference_loop, daemon=True, args=(robot_id,))
+                inference_thread.start()
             
             self.start_cli()
             
@@ -207,6 +205,12 @@ class MainOrchestrator:
             except subprocess.TimeoutExpired:
                 self.mujoco_process.kill()
                 
+        if self.queue_process:
+            self.queue_process.terminate()
+            try:
+                self.queue_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.queue_process.kill()
         self.logger.info("Shutdown complete")
         sys.exit(0)
 

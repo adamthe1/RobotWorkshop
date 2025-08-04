@@ -1,7 +1,10 @@
 import numpy as np
 from PIL import Image
 
-from .args import VISION_WEIGHTS_PATH
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 class DummyVisionModel:
     def __init__(self, weights_path):
@@ -13,7 +16,8 @@ class DummyVisionModel:
 
 class MissionStatus:
     def __init__(self):
-        self.vision_model = DummyVisionModel(VISION_WEIGHTS_PATH)
+
+        self.vision_model = DummyVisionModel(os.getenv("VISION_MODEL_PATH", 'dummy'))
 
     def sub_mission_status(self, robot_status):
         """
