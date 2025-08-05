@@ -12,7 +12,7 @@ import time
 import threading
 import numpy as np
 from pathlib import Path
-from .packet_example import Packet
+from .packet_example import Packet, RobotListPacket
 
 import mujoco
 import mujoco.viewer
@@ -35,7 +35,6 @@ class MuJoCoServer:
         self.port = port
         self.running = True
         self.locker = threading.Lock()
-        self.client_socket = None
         self.server_socket = None
         self.logger = get_logger('MujocoServer')
 
@@ -71,7 +70,7 @@ class MuJoCoServer:
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(1)
+        self.server_socket.listen(10)
         
 
 
@@ -105,7 +104,7 @@ class MuJoCoServer:
 
     def get_robot_list(self):
         """Return a list of robot IDs (stubbed)"""
-        return ['robot_1', 'robot_2']
+        return ['robot_1', 'robot_2', 'robot_3' , 'robot_4', 'robot_5', 'robot_6']
 
     def step_once(self):
         """Advance the physics by one timestep"""
@@ -170,46 +169,48 @@ class MuJoCoServer:
 
         return packet
 
-    def _recv_packet(self):
+    def _recv_packet(self, client_socket):  # Add socket parameter
         """Receive a length‑prefixed pickled packet"""
-        size_data = self.client_socket.recv(4)
+        size_data = client_socket.recv(4)  # Use parameter instead of self.client_socket
         if not size_data:
             return None
         size = struct.unpack('!I', size_data)[0]
         buf = b''
         while len(buf) < size:
-            buf += self.client_socket.recv(size - len(buf))
+            buf += client_socket.recv(size - len(buf))  # Use parameter
         return pickle.loads(buf)
 
-    def _send_packet(self, packet):
+    def _send_packet(self, packet, client_socket):  # Add socket parameter
         """Send a length‑prefixed pickled packet"""
         data = pickle.dumps(packet)
-        self.client_socket.sendall(struct.pack('!I', len(data)) + data)
+        client_socket.sendall(struct.pack('!I', len(data)) + data)  # Use parameter
 
     def handle_client(self, client_socket, addr):
         """
         Handle incoming RPCs: 'action' → apply+step, else → return state
         """
-        self.client_socket = client_socket
+        # Remove this line: self.client_socket = client_socket
         self.logger.info(f"Client connected: {addr}")
         try:
             while True:
-                pkt: Packet = self._recv_packet()
-                if pkt is None:
+                pkt = self._recv_packet(client_socket)  # Pass socket
+                if isinstance(pkt, RobotListPacket):
+                    self.logger.debug("Received request for robot list")
+                    reply = self.fill_robot_list(pkt)
+                    self.logger.debug(f"Sending robot list: {reply.robot_list}")
+                elif pkt is None:
                     break
                 elif pkt.action is not None:
                     reply = self.apply_commands(pkt)
                     self.step_once()
-                elif pkt.robot_id == 'robot_list':
-                    reply = self.fill_robot_list(pkt)
                 else:
                     reply = self.fill_packet(pkt)
-                self._send_packet(reply)
+                self._send_packet(reply, client_socket)  # Pass socket
         except Exception as e:
             self.logger.error(f"Error in client loop: {e}")
         finally:
-            self.logger.info("Client disconnected")
-            self.close()
+            client_socket.close()  # Close this specific client
+            self.logger.info(f"Client {addr} disconnected")
 
     def simulation_thread(self, control_hz=60):
         dt = 1.0 / control_hz
@@ -238,20 +239,24 @@ class MuJoCoServer:
         sim_t = threading.Thread(target=self.simulation_thread, daemon=True)
         sim_t.start()
 
-        client, addr = self.server_socket.accept()
-        self.handle_client(client, addr)
+        while True:
+            client, addr = self.server_socket.accept()
+            t = threading.Thread(
+                target=self.handle_client,
+                args=(client, addr),
+                daemon=True
+            )
+            t.start()
 
     def close(self):
         """Cleanup sockets and viewer"""
         self.logger.info("Shutting down server...")
         self.running = False
-        if self.client_socket:
-            self.client_socket.close()
+        # Remove client_socket cleanup since it's per-thread now
         if self.server_socket:
             self.server_socket.close()
         if self.viewer:
             self.viewer.close()
-        exit(0)
 
 
 def find_model_path():
@@ -278,38 +283,42 @@ class MujocoClient:
         self.socket.connect((self.host, self.port))
         self.logger.info(f"Connected to MuJoCo server at {self.host}:{self.port}")
     
-    def recv_robot_list(self):
+    @staticmethod
+    def recv_robot_list():
         """
         Receive the list of robots from the server.
         """
-        packet = self.send_and_recv(Packet(robot_id='robot_list'))
-        if packet is None:
-            self.logger.error("Failed to receive robot list")
-            raise ConnectionError("Failed to receive robot list")
+        client = MujocoClient()
+        client.connect()
+        packet = RobotListPacket(robot_id='robot_list')
+        packet = client.send_and_recv(packet)
+        if packet is None or not hasattr(packet, 'robot_list'):
+            raise ValueError("Failed to receive robot list from server")
+        client.close()
         return packet.robot_list
         
     def send_and_recv(self, packet):
         """
         Send a pickled packet and receive the pickled reply, with debug logs.
         """
-        sock = self.socket
-        if sock is None:
+        if self.socket is None:  # Fixed: Check self.socket instead of sock
             raise ConnectionError("Socket is not connected")
         try:
             self.logger.debug(f"send_and_recv - sending packet: {packet}")
             data_out = pickle.dumps(packet)
-            sock.sendall(struct.pack('!I', len(data_out)) + data_out)
+            self.socket.sendall(struct.pack('!I', len(data_out)) + data_out)  # Fixed: Use self.socket
 
             # Read length prefix
-            size_data = sock.recv(4)
+            size_data = self.socket.recv(4)  # Fixed: Use self.socket
             if not size_data:
                 raise ConnectionError("No data received for length prefix")
             size = struct.unpack('!I', size_data)[0]
             self.logger.debug(f"send_and_recv - expecting {size} bytes reply")
+            
             # Read the full reply
             buf = b''
             while len(buf) < size:
-                chunk = sock.recv(size - len(buf))
+                chunk = self.socket.recv(size - len(buf))  # Fixed: Use self.socket
                 if not chunk:
                     raise ConnectionError("Incomplete payload: connection closed")
                 buf += chunk
@@ -322,7 +331,18 @@ class MujocoClient:
         
     def close(self):
         if self.socket:
+            self.logger.info("Closing MuJoCo client socket")
             self.socket.close()
+            self.socket = None  # Added: Reset socket to None after closing
+        else:
+            self.logger.debug("MuJoCo client socket is already closed or was never opened")  # Changed to debug
+
+    def __enter__(self):
+        self.connect()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):  # Fixed: Added missing parameters
+        self.close()
 
 
 if __name__ == '__main__':

@@ -14,6 +14,7 @@ from logger_config import get_logger
 from dotenv import load_dotenv
 import os
 from mujoco_folder.mujoco_server import MujocoClient
+from brain.brain_server import BrainClient
 from pathlib import Path
 
 
@@ -25,7 +26,6 @@ class MainOrchestrator:
         
         self.mujoco_process = None
         self.cli_process = None
-        self.mujoco_client = MujocoClient()
         self.running = True
         
         signal.signal(signal.SIGINT, self._signal_handler)
@@ -42,6 +42,7 @@ class MainOrchestrator:
             sys.executable,
             "-m", "mujoco_folder.mujoco_server"
         ], cwd=str(project_root))
+        time.sleep(1)  # Give server time to start
 
 
     def start_queue_server(self):
@@ -52,7 +53,7 @@ class MainOrchestrator:
             cwd=project_root,
             env={**os.environ, "PYTHONPATH": str(project_root)}
         )
-        time.sleep(2)
+        time.sleep(1)
     
     def start_logging_server(self):
         print("Starting Logging server...")
@@ -63,6 +64,21 @@ class MainOrchestrator:
         ], cwd=str(project_root))
         time.sleep(1)  # Give server time to start
 
+    def start_brain_server(self):
+        self.logger.info("Starting Brain server...")
+        project_root = Path(__file__).resolve().parent
+        self.brain_process = subprocess.Popen(
+            [sys.executable, "-m", "brain.brain_server"],
+            cwd=str(project_root),
+            env={**os.environ, "PYTHONPATH": str(project_root)}
+        )
+        time.sleep(1)  # Give server time to start
+
+    def start_servers(self):
+        self.start_logging_server()
+        self.start_mujoco_server()
+        self.start_queue_server()
+        self.start_brain_server()
 
 
     def start_cli(self):
@@ -75,12 +91,11 @@ class MainOrchestrator:
             env={**os.environ, "PYTHONPATH": str(repo_root)}
         )
         
-    def connect_to_mujoco(self):
-        self.logger.info("Connecting to MuJoCo server...")
+    def connect_to_mujoco(self, mujoco_client):
         max_retries = 10
         for i in range(max_retries):
             try:
-                self.mujoco_client.connect()
+                mujoco_client.connect()
                 self.logger.info("Connected to MuJoCo server")
                 return
             except ConnectionRefusedError:
@@ -90,16 +105,26 @@ class MainOrchestrator:
                 else:
                     raise
 
-    def connect_to_brain(self):
+    def connect_to_brain(self, brain_client):
         self.logger.info("Connecting to brain...")
-        # Placeholder for brain connection logic
-        # This could be a separate client connection or API call
-        pass
+        max_retries = 10
+        for i in range(max_retries):
+            try:
+                brain_client.connect()
+                self.logger.info("Connected to Brain server")
+                return
+            except ConnectionRefusedError:
+                if i < max_retries - 1:
+                    self.logger.warning(f"Connection attempt {i+1} failed, retrying...")
+                    time.sleep(1)
+                else:
+                    raise
 
-                    
-    def inference_loop(self, robot_id, mission_manager, tries=3):
+    def inference_loop(self, robot_id, clients, tries=3):
         self.logger.info("Starting inference loop for robot: %s", robot_id)
-
+        mission_manager = clients['manager']
+        mujoco_client = clients['mujoco']
+        brain_client = clients['brain']
         # Step 0: Start an empty packet with robot id
         packet = Packet(robot_id=robot_id)
         while packet.mission is None:
@@ -117,7 +142,7 @@ class MainOrchestrator:
         while self.running:
             try:
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
-                packet = self.mujoco_client.send_and_recv(packet)
+                packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Received robot state")
                 if packet is None:
                     self.logger.warning(f"Robot {robot_id} state is None, skipping...")
@@ -129,17 +154,13 @@ class MainOrchestrator:
 
                 if packet.mission is None:
                     self.logger.info(f"Robot {robot_id} has no mission, reset for next mission")
-                    self.inference_loop(robot_id, mission_manager)
+                    self.inference_loop(robot_id, clients)
                 
-                # TODO: Step 5: Send to policy, get action
-                # This is where the policy inference will happen
-                # For now, using dummy action
-                dummy_action = [0.0] * 7  # 7-DOF robot arm
-  
-                
-                # Step 6: Send to mujoco server map actions loop
-                packet.action = dummy_action
-                packet = self.mujoco_client.send_and_recv(packet)
+                # Step 4: Send to Brain, get action
+                packet = brain_client.send_and_recv(packet)
+                self.logger.debug(f"{robot_id} Received action from Brain")
+
+                packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id}Action sent, result: {packet.action}")
 
                 time.sleep(0.1)
@@ -152,22 +173,19 @@ class MainOrchestrator:
                 if tries <= 0:
                     self.logger.error(f"Max retries reached for robot {robot_id}, exiting loop")
                     raise
-                self.inference_loop(robot_id, mission_manager, tries)
+                self.inference_loop(robot_id, clients, tries)
                 
     def run(self):
         try:
-            self.start_logging_server()  # Start this first
-            self.start_mujoco_server()
-            self.start_queue_server()
-            
+            self.start_servers()
+
             time.sleep(2)
-            self.connect_to_mujoco()
-            self.connect_to_brain()
-            self.robot_list = self.mujoco_client.recv_robot_list()
+
+            self.robot_list = MujocoClient().recv_robot_list()
             if not self.robot_list:
                 self.logger.error("No robots found in the robot list")
                 return
-                
+
             self.logger.info(f"Robot list received: {self.robot_list}")
             MissionManager.set_robot_list(self.robot_list)
             
@@ -175,7 +193,12 @@ class MainOrchestrator:
             for robot_id in self.robot_list:
                 self.logger.info(f"Robot {robot_id} is ready for missions")
                 manager = MissionManager()
-                inference_thread = threading.Thread(target=self.inference_loop, daemon=True, args=(robot_id, manager))
+                mujoco_client = MujocoClient()
+                brain_client = BrainClient()   
+                self.connect_to_mujoco(mujoco_client)
+                self.connect_to_brain(brain_client)
+                clients = {"manager": manager, "mujoco": mujoco_client, "brain": brain_client}
+                inference_thread = threading.Thread(target=self.inference_loop, daemon=True, args=(robot_id, clients))
                 inference_thread.start()
 
             self.start_cli()
@@ -197,9 +220,6 @@ class MainOrchestrator:
     def shutdown(self):
         self.running = False
         self.logger.info("Shutting down all processes...")
-        
-        if self.mujoco_client:
-            self.mujoco_client.close()
             
         if self.cli_process:
             self.cli_process.terminate()
@@ -221,6 +241,13 @@ class MainOrchestrator:
                 self.queue_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.queue_process.kill()
+
+        if self.brain_process:
+            self.brain_process.terminate()
+            try:
+                self.brain_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.brain_process.kill()
         
         if self.logging_process:
             self.logging_process.terminate()
@@ -228,6 +255,8 @@ class MainOrchestrator:
                 self.logging_process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.logging_process.kill()
+
+        
         print("All processes terminated, exiting...")
         sys.exit(0)
 
