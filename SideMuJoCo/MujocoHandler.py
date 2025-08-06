@@ -256,7 +256,7 @@ def find_model_path():
     Find the MuJoCo model path using a default location
     """
     #default_path = "/home/adam/Documents/coding/autonomous/franka_emika_panda/mjx_scene.xml"
-    default_path = "/root/RobotWorkshop/franka_emika_panda/mjx_scene.xml"
+    default_path = "/root/RobotWorkshop/franka_emika_panda/panda_bar_scene.xml"
     if os.path.exists(default_path):
         return default_path
     raise FileNotFoundError("Could not find model file at default path")
