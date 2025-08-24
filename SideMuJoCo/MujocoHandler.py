@@ -83,7 +83,19 @@ class MuJoCoHandler:
         """Update the MuJoCo viewer if it's running."""
         if self.viewer is not None and self.viewer.is_running():
             with self.locker:
+
                 self.viewer.sync()
+    
+
+    def update_actuator_targets(self):
+        """Update actuator control targets to current joint positions"""
+        for i in range(self.model.nu):
+            # Get the joint associated with this actuator
+            joint_id = self.model.actuator_trnid[i, 0]
+            if joint_id >= 0 and joint_id < self.model.njnt:
+                # Set control target to current joint position
+                current_pos = self.data.qpos[self.model.jnt_qposadr[joint_id]]
+                self.data.ctrl[i] = current_pos
 
 
 
@@ -173,6 +185,9 @@ class MuJoCoHandler:
             
             # 2) step the muJoCo sim
             with self.locker:
+
+                self.update_actuator_targets()
+
                 mujoco.mj_step(self.model, self.data)
 
             # 3) redraw viewer (passive or active)
