@@ -12,7 +12,7 @@ import pickle
 import struct
 import time
 import traceback
-from packet_example import Packet
+from mujoco_folder.packet_example import Packet
 import numpy as np
 
 HOST = 'localhost'
