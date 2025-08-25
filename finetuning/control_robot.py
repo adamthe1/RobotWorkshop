@@ -13,7 +13,7 @@ import glfw
 from recording import create_lerobot_recorder, add_lerobot_controls
 
 # ============== User config ==============
-XML_PATH = '/home/adam/Documents/coding/autonomous/franka_emika_panda/mjx_scene.xml'
+XML_PATH = "/home/adam/Documents/coding/autonomous/franka_emika_panda/panda_bar_scene_single.xml"
 EE_SITE_CANDIDATES = ["ee_site"]
 ARM_JOINT_NAMES  = ["joint1","joint2","joint3","joint4","joint5","joint6","joint7"]
 ARM_ACT_NAMES    = ["actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7"]
@@ -47,9 +47,10 @@ CAMERA_PAN_SENS   = 100.0
 CAMERA_ZOOM_SENS  = 60.0
 
 # --- Posture/limits (nullspace) ---
-J1_LIMIT = np.deg2rad(60.0)   # ±60 deg soft limit for joint 1
-J1_LIMIT_K = 2.0              # how strongly to push back when beyond limit
-J2_PREF = -0.50               # radians; "bend a little more" (tweak: -0.35 .. -0.8)
+J1_LIMIT = np.deg2rad(10.0)   # ±30 deg soft limit for joint 1
+J1_LIMIT_K = 4.0              # how strongly to push back when beyond limit
+J1_CENTER_K = 200.0  # increase if you want stronger centering
+J2_PREF = -0.5               # radians; "bend a little more" (tweak: -0.35 .. -0.8)
 J2_PREF_K = 0.8               # pull strength toward the preferred bend
 # =========================================
 
@@ -125,23 +126,23 @@ class InputState:
         self.grip_close=False; self.grip_open=False
     def reset_oneshot(self):
         self.grip_close=False; self.grip_open=False
-
 def main():
     # ----- Load model -----
     xml = Path(XML_PATH)
-    if not xml.exists(): print(f"[ERROR] XML not found: {xml}"); sys.exit(1)
+    if not xml.exists():
+        print(f"[ERROR] XML not found: {xml}")
+        sys.exit(1)
     model = mujoco.MjModel.from_xml_path(str(xml))
     data  = mujoco.MjData(model)
 
     ee_site_id, ee_site_name = pick_ee_site_id(model)
     arm_dof = dof_indices_for_joints(model, ARM_JOINT_NAMES)  # 7 hinge DoFs
-    if len(arm_dof)!=7: raise RuntimeError(f"Expected 7 arm DoFs, got {len(arm_dof)}")
+    if len(arm_dof) != 7:
+        raise RuntimeError(f"Expected 7 arm DoFs, got {len(arm_dof)}")
     arm_act_ids = [actuator_index(model, nm) for nm in ARM_ACT_NAMES]
 
-    # map joint6/7 to positions in the 7D arm subspace
-    j6_abs = dof_indices_for_joints(model, ["joint6"])[0]
+    # Map joint7 to its index inside the 7-DoF arm subspace
     j7_abs = dof_indices_for_joints(model, ["joint7"])[0]
-    pos6 = int(np.where(arm_dof == j6_abs)[0][0])
     pos7 = int(np.where(arm_dof == j7_abs)[0][0])
 
     # Gripper actuator
@@ -158,11 +159,15 @@ def main():
         GRIP_OPEN_VAL=GRIP_CLOSE_VAL=0.0; grip_target=0.0
 
     # ----- GLFW window -----
-    if not glfw.init(): raise RuntimeError("GLFW init failed")
+    if not glfw.init():
+        raise RuntimeError("GLFW init failed")
     glfw.window_hint(glfw.SAMPLES, 4)
-    window = glfw.create_window(1280, 820, "MuJoCo 3.3.4 Panda Teleop (Keyboard + Wrist Nullspace)", None, None)
-    if not window: glfw.terminate(); raise RuntimeError("GLFW window create failed")
-    glfw.make_context_current(window); glfw.swap_interval(1)
+    window = glfw.create_window(1280, 820, "MuJoCo 3.3.4 Panda Teleop (Keyboard + Joint7 Yaw)", None, None)
+    if not window:
+        glfw.terminate()
+        raise RuntimeError("GLFW window create failed")
+    glfw.make_context_current(window)
+    glfw.swap_interval(1)
 
     # ----- Render objects -----
     cam = mujoco.MjvCamera(); opt = mujoco.MjvOption()
@@ -201,8 +206,8 @@ def main():
         elif key == glfw.KEY_DOWN:  inp.down  = pressed
         elif key == glfw.KEY_A:     inp.z_up   = pressed
         elif key == glfw.KEY_D:     inp.z_down = pressed
-        elif key == glfw.KEY_Q:     inp.yaw_left  = pressed
-        elif key == glfw.KEY_E:     inp.yaw_right = pressed
+        elif key == glfw.KEY_Q:     inp.yaw_left  = pressed   # will steer joint7 target
+        elif key == glfw.KEY_E:     inp.yaw_right = pressed   # will steer joint7 target
         elif key == glfw.KEY_F and action == glfw.PRESS: inp.grip_close = True
         elif key == glfw.KEY_G and action == glfw.PRESS: inp.grip_open  = True
 
@@ -214,28 +219,30 @@ def main():
     mujoco.mj_forward(model, data)
 
     # ----- Desired target init -----
-    ee_pos, ee_R = get_site_pose(model, data, ee_site_id)
+    ee_pos, _ee_R = get_site_pose(model, data, ee_site_id)
     des_pos = ee_pos.copy()
-    des_yaw = yaw_from_R(ee_R)  # start with current yaw
-    zhat = np.array([0.0, 0.0, 1.0])
 
-    print(f"[INFO] EE site: '{ee_site_name}'. Arrows: XY, A/D: Z±, Q/E: yaw (Shift=coarse), F/G: grip, ESC: quit.")
+    # Desired heading for joint7: start at current q7
+    des_j7 = float(data.qpos[arm_dof][pos7])
+
+    print(f"[INFO] EE site: '{ee_site_name}'. Arrows: XY, A/D: Z±, Q/E: joint7 yaw (Shift=coarse), F/G: grip, ESC: quit.")
 
     last_time = time.time(); ctrl_accum = 0.0
 
-     # Create LeRobot recorder
+    # Create LeRobot recorder
     recorder = create_lerobot_recorder(model, data, "panda_teleop_dataset")
-    
-    # Enhance key callback
+    # Enhance key callback with recording controls
     original_on_key = on_key
     enhanced_on_key = add_lerobot_controls(recorder, original_on_key)
     glfw.set_key_callback(window, enhanced_on_key)
-    
 
     while not glfw.window_should_close(window):
-        if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS: break
+        if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS:
+            break
 
-        now = time.time(); dt = now - last_time; last_time = now
+        now = time.time()
+        dt = now - last_time
+        last_time = now
         ctrl_accum += dt * CTRL_HZ
         substeps = min(SUBSTEPS_PER_RENDER, int(ctrl_accum))
         ctrl_accum -= substeps
@@ -243,13 +250,10 @@ def main():
         # Record frame if recording
         if recorder.is_recording:
             current_action = data.ctrl[arm_act_ids].copy()
-            recorder.record_frame(
-                action=current_action,
-                done=False  # Set to True when episode should end
-            )
+            recorder.record_frame(action=current_action, done=False)
 
         for _ in range(substeps):
-            # ---- 1) target updates (discrete steps per tick while held) ----
+            # ---- 1) update target position and joint7 target yaw from keys ----
             if inp.left:  des_pos[0] -= XY_STEP
             if inp.right: des_pos[0] += XY_STEP
             if inp.up:    des_pos[1] += XY_STEP
@@ -258,66 +262,59 @@ def main():
             if inp.z_down: des_pos[2] -= Z_STEP
 
             yaw_step = 0.01 if not inp.shift else 0.04
-            if inp.yaw_left:  des_yaw += yaw_step
-            if inp.yaw_right: des_yaw -= yaw_step
+            if inp.yaw_left:  des_j7 += yaw_step
+            if inp.yaw_right: des_j7 -= yaw_step
 
             # ---- 2) Kinematics ----
-            cur_pos, cur_R = get_site_pose(model, data, ee_site_id)
-            Jp_full, Jr_full = jacobian_site(model, data, ee_site_id)
+            cur_pos, _cur_R = get_site_pose(model, data, ee_site_id)
+            Jp_full, _Jr_full = jacobian_site(model, data, ee_site_id)
             Jp = Jp_full[:, arm_dof]    # (3,7)
-            Jr = Jr_full[:, arm_dof]    # (3,7)
 
             # ---- 3) Primary: position-only DLS ----
-            e_pos = des_pos - cur_pos                   # (3,)
-            v_pos = Kp_pos * e_pos                      # desired linear velocity
-            JJt = Jp @ Jp.T                             # (3,3)
+            e_pos = des_pos - cur_pos
+            v_pos = Kp_pos * e_pos
+            JJt = Jp @ Jp.T
             qdot_pos = Jp.T @ np.linalg.solve(JJt + (DAMPING_LAMBDA**2)*np.eye(3), v_pos)  # (7,)
 
-            # ---- 4) Secondary (wrist-only) orientation in nullspace ----
-            # floor-parallel: kill roll/pitch using tool "up" axis vs world z
-            tool_up = cur_R[:, UP_AXIS]                 # (3,)
-            e_upright = np.cross(tool_up, zhat)         # (3,) angular velocity to align up->zhat
+            # ---- 4) Posture biases in the nullspace ----
+            q_arm = data.qpos[arm_dof]  # (7,)
 
-            # yaw control around world z
-            yaw_cur = yaw_from_R(cur_R)
-            e_yaw = wrap_pi(des_yaw - yaw_cur)
-            omega_des = Kp_upright * e_upright + Kp_yaw * e_yaw * zhat   # (3,)
+            # (a) Joint index 1: keep near 0 and softly repel near/over ±J1_LIMIT
+            j_idx_upright = 1
+            q_upright = q_arm[j_idx_upright]
+            J1_CENTER_K = 2.0
+            BARRIER_EPS = np.deg2rad(5.0)
+            def soft_barrier(q, limit, eps):
+                return math.tanh((abs(q) - limit) / eps) * (1.0 if q >= 0.0 else -1.0)
 
-            # wrist-only jacobian (columns for joint6, joint7 in the 7D arm subspace)
-            Jr_wrist = Jr[:, [pos6, pos7]]              # (3,2)
+            # (b) Joint index 3: prefer specific bend angle J2_PREF
+            j_idx_prefbend = 3
+            q_prefbend = q_arm[j_idx_prefbend]
 
-            # DLS on wrist only
-            A = Jr_wrist @ Jr_wrist.T                   # (3,3)
-            qdot_wrist_2 = Jr_wrist.T @ np.linalg.solve(A + (DAMPING_LAMBDA**2)*np.eye(3), omega_des)  # (2,)
-            qdot_wrist = np.zeros(7)
-            qdot_wrist[pos6] = qdot_wrist_2[0]
-            qdot_wrist[pos7] = qdot_wrist_2[1]
-
-            q_arm = data.qpos[arm_dof]    # (7,)
-            q1 = q_arm[0]
-            q2 = q_arm[1]
-
+            # Build posture bias vector
             z = np.zeros(7)
-            # joint1 soft-limit: only push when outside band
-            if q1 > +J1_LIMIT:
-                z[0] = -J1_LIMIT_K * (q1 - J1_LIMIT)
-            elif q1 < -J1_LIMIT:
-                z[0] = -J1_LIMIT_K * (q1 + J1_LIMIT)
+            # (a) center + soft-limit for joint index 1
+            z[j_idx_upright] += -J1_CENTER_K * q_upright
+            z[j_idx_upright] += -J1_LIMIT_K  * soft_barrier(q_upright, J1_LIMIT, BARRIER_EPS)
+            # (b) preferred bend for joint index 3
+            z[j_idx_prefbend] += -J2_PREF_K * (q_prefbend - J2_PREF)
 
-            # joint2 posture: pull toward preferred bend
-            z[1] += -J2_PREF_K * (q2 - J2_PREF)
-
-            # Nullspace projector of position task
+            # ---- 5) Nullspace projector of the position task ----
             Jp_pinv = Jp.T @ np.linalg.solve(Jp @ Jp.T + (DAMPING_LAMBDA**2)*np.eye(3), np.eye(3))
             N = np.eye(7) - Jp_pinv @ Jp
 
-            qdot_7 = qdot_pos + N @ qdot_wrist          # (7,)
+            # Combine: primary position + nullspace posture
+            qdot_7 = qdot_pos + N @ z
 
-            # ---- 4.2) Combine wrist-secondary + posture limits, and project in nullspace ----
-            qdot_secondary = qdot_wrist + z          # (7,)
-            qdot_7 = qdot_pos + N @ qdot_secondary        # (7,)
+            # ---- 6) Joint7 heading-hold (direct term on j7 only) ----
+            Kp_j7 = 6.0  # tune 3..10
+            q7 = q_arm[pos7]
+            q7_err = wrap_pi(q7 - des_j7)  # wrap to [-pi, pi]
+            qdot_7[pos7] += -Kp_j7 * q7_err
+            # optional small clamp for stability
+            qdot_7[pos7] = float(clamp(qdot_7[pos7], -1.0, 1.0))
 
-            # ---- 5) Integrate and command position actuators ----
+            # ---- 7) Integrate and command position actuators ----
             q = data.qpos[arm_dof]
             q_des = q + qdot_7 * DT_CTRL
 
@@ -343,7 +340,7 @@ def main():
         draw_target_marker(scene, des_pos, TARGET_RADIUS, TARGET_RGBA)
         mujoco.mjr_render(viewport, scene, ctx)
 
-        overlay = "XY: ←/→,↑/↓ | Z: A/D | Yaw: Q/E (Shift=coarse) | Grip: F/G | ESC quits"
+        overlay = "XY: ←/→,↑/↓ | Z: A/D | Joint7 yaw: Q/E (Shift=coarse) | Grip: F/G | ESC quits"
         mujoco.mjr_overlay(mujoco.mjtFontScale.mjFONTSCALE_150,
                            mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, viewport, overlay, "", ctx)
         glfw.swap_buffers(window); glfw.poll_events()
@@ -353,6 +350,7 @@ def main():
     if recorder.is_recording:
         recorder.stop_recording()
     recorder.finalize_dataset()
+
 
 if __name__ == "__main__":
     main()
