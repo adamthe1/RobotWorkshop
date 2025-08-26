@@ -9,15 +9,18 @@ from typing import List, Tuple, Optional
 import numpy as np
 import mujoco
 import glfw
+from dotenv import load_dotenv
+import os
 
 from recording import create_lerobot_recorder, add_lerobot_controls
 
 
+load_dotenv()
 # ---------------------------- Configuration ----------------------------
 @dataclass(frozen=True)
 class TeleopConfig:
     xml_path: str = \
-        "/root/RobotWorkshop/franka_emika_panda/scene_bar_new_ziv.xml"
+        os.getenv("CONTROL_ROBOT_PATH", "/home/adam/Documents/coding/autonomous/franka_emika_panda/scene_bar_new_ziv.xml")
     ee_site_candidates: Tuple[str, ...] = ("ee_site",)
     arm_joint_names: Tuple[str, ...] = ("joint1","joint2","joint3","joint4","joint5","joint6","joint7")
     arm_act_names: Tuple[str, ...] = ("actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7")
@@ -383,9 +386,12 @@ class TeleopApp:
         try:
             from pathlib import Path
             import glob
-            save_dir = Path("finetuning/saved_robot_states")
-            if save_dir.exists():
-                files = sorted(save_dir.glob("state_*.npz"))
+            pwd = os.getcwd()
+            if not pwd.endswith("finetuning"):
+                pwd = os.path.join(pwd, "finetuning")
+            save_dir = os.path.join(pwd, "saved_robot_states")
+            if os.path.exists(save_dir):
+                files = sorted(glob.glob(os.path.join(save_dir, "state_*.npz")))
                 if files:
                     latest = files[-1]
                     arr = np.load(latest)
@@ -504,10 +510,14 @@ class TeleopApp:
             self.saved_qvel = np.copy(self.robot.data.qvel)
             # Also write to disk (timestamped in saved_robot_states)
             try:
-                import os, time
-                os.makedirs("finetuning/saved_robot_states", exist_ok=True)
+                import time
+                pwd = os.getcwd()
+                if not pwd.endswith("finetuning"):
+                    pwd = os.path.join(pwd, "finetuning")
+                save_dir = os.path.join(pwd, "saved_robot_states")
+                os.makedirs(save_dir, exist_ok=True)
                 ts = time.strftime("%Y%m%d_%H%M%S")
-                path = f"finetuning/saved_robot_states/state_{ts}.npz"
+                path = os.path.join(save_dir, f"state_{ts}.npz")
                 np.savez(path, qpos=self.saved_qpos, qvel=self.saved_qvel)
                 print(f"[INFO] Saved robot state to {path}")
             except Exception as e:

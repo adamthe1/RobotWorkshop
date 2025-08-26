@@ -1,5 +1,5 @@
 <mujoco model="panda scene (bar table)">
-  <include file="panda_nokey.xml"/>
+
 
   <statistic center="0.3 0 0.4" extent="1"/>
 
@@ -72,7 +72,7 @@
 
 
     
-   
+   <model name="panda" file="panda_nokey.xml"/>
   </asset>
 
   <worldbody>
@@ -132,6 +132,11 @@
             contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
 
 </body>
+ <body name="r1_frame" pos="0 0 0">
+        <attach model="panda" prefix="r1_"/>  
+    </body>
+
+
 
   </worldbody>
 </mujoco>
