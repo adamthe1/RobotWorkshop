@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# filepath: /home/adam/Documents/coding/autonomous/finetuning/lerobot_recorder.py
+# filepath: /home/adam/Documents/coding/autonomous/finetuning/recording.py
 
 import time
 import numpy as np
@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 import tempfile
 import shutil
-import glfw 
+import glfw
 
 @dataclass
 class RecordingConfig:
@@ -27,10 +27,19 @@ class RecordingConfig:
     video_height: int = 224
     video_fps: int = 30
     camera_names: List[str] = None
+    use_robot_prefix: bool = False  # NEW: control robot prefix usage
+    robot_prefix: str = "r1_"      # NEW: default robot prefix
     
     def __post_init__(self):
         if self.camera_names is None:
-            self.camera_names = ["main_cam"]
+            # Default camera names from mjx_panda.xml
+            base_cameras = ["cam1"]  # Camera in the hand
+            
+            if self.use_robot_prefix:
+                # Add robot prefix to camera names
+                self.camera_names = [f"{self.robot_prefix}{cam}" for cam in base_cameras]
+            else:
+                self.camera_names = base_cameras
 
 class LeRobotDatasetRecorder:
     """Records MuJoCo simulation data in LeRobot v2.1 format"""
@@ -39,6 +48,9 @@ class LeRobotDatasetRecorder:
         self.model = model
         self.data = data
         self.config = config
+        
+        # Validate camera names exist in model
+        self._validate_cameras()
         
         # Recording state
         self.is_recording = False
@@ -72,6 +84,28 @@ class LeRobotDatasetRecorder:
         self.episode_stats = []
         
         print(f"[LeRobotRecorder] Initialized v2.1 dataset at: {self.dataset_path}")
+        print(f"[LeRobotRecorder] Recording from cameras: {self.config.camera_names}")
+    
+    def _validate_cameras(self):
+        """Validate that specified cameras exist in the model"""
+        available_cameras = []
+        for i in range(self.model.ncam):
+            cam_name = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_CAMERA, i)
+            if cam_name:
+                available_cameras.append(cam_name)
+        
+        print(f"[LeRobotRecorder] Available cameras in model: {available_cameras}")
+        
+        # Check if requested cameras exist
+        missing_cameras = []
+        for cam_name in self.config.camera_names:
+            cam_id = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_CAMERA, cam_name)
+            if cam_id < 0:
+                missing_cameras.append(cam_name)
+        
+        if missing_cameras:
+            print(f"[LeRobotRecorder] WARNING: Missing cameras: {missing_cameras}")
+            print(f"[LeRobotRecorder] Will use free cameras for missing ones")
     
     def _setup_directories(self):
         """Create LeRobot dataset directory structure"""
@@ -104,6 +138,7 @@ class LeRobotDatasetRecorder:
             if cam_id >= 0:
                 camera.type = mujoco.mjtCamera.mjCAMERA_FIXED
                 camera.fixedcamid = cam_id
+                print(f"[LeRobotRecorder] Using fixed camera '{cam_name}' (id: {cam_id})")
             else:
                 # Default free camera setup
                 camera.type = mujoco.mjtCamera.mjCAMERA_FREE
@@ -111,13 +146,14 @@ class LeRobotDatasetRecorder:
                 camera.azimuth = 45.0
                 camera.elevation = -30.0
                 camera.lookat = np.array([0.0, 0.0, 0.5])
+                print(f"[LeRobotRecorder] Using free camera for '{cam_name}' (not found in model)")
             
             self.cameras[cam_name] = camera
             
             # Create renderer
             renderer = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
             self.renderers[cam_name] = renderer
-    
+
     def start_recording(self, task_description: str = "robot_manipulation"):
         """Start recording a new episode"""
         if self.is_recording:
@@ -461,14 +497,26 @@ class LeRobotDatasetRecorder:
 # Integration functions for control_robot.py
 def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData, 
                            dataset_name: str = "panda_teleop", 
-                           output_dir: str = "./datasets") -> LeRobotDatasetRecorder:
-    """Create a LeRobot dataset recorder"""
+                           output_dir: str = "./datasets",
+                           robot_prefix: str = "r1_",
+                           use_prefix: bool = True) -> LeRobotDatasetRecorder:
+    """Create a LeRobot dataset recorder
+    
+    Args:
+        model: MuJoCo model
+        data: MuJoCo data
+        dataset_name: Name of the dataset
+        output_dir: Output directory
+        robot_prefix: Prefix for robot (e.g., "r1_", "r2_")
+        use_prefix: Whether to use robot prefix for camera names
+    """
     config = RecordingConfig(
         dataset_name=dataset_name,
         output_dir=output_dir,
         fps=60,
         video_fps=30,
-        camera_names=["main_cam"],  # Adjust based on your scene
+        use_robot_prefix=use_prefix,
+        robot_prefix=robot_prefix,
         video_width=224,
         video_height=224
     )
@@ -480,14 +528,14 @@ def add_lerobot_controls(recorder: LeRobotDatasetRecorder, on_key_callback):
         # Call original callback first
         on_key_callback(win, key, scancode, action, mods)
         
-        # Add recording controls - FIX: Use glfw.PRESS instead of mujoco.glfw.PRESS
-        if action == glfw.PRESS:  # Changed from mujoco.glfw.PRESS
-            if key == glfw.KEY_R:  # R to start/stop recording
+        # Add recording controls
+        if action == glfw.PRESS:
+            if key == glfw.KEY_M:  # M to start/stop recording
                 if recorder.is_recording:
                     recorder.stop_recording()
                 else:
                     recorder.start_recording("pick_and_place")
-            elif key == glfw.KEY_T:  # T to finalize dataset
+            elif key == glfw.KEY_N:  # N to finalize dataset
                 if recorder.is_recording:
                     recorder.stop_recording()
                 recorder.finalize_dataset()

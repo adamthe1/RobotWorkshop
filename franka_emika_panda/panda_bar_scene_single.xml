@@ -4,8 +4,7 @@
   <statistic center="0.3 0 0.4" extent="1"/>
 
   <option timestep="0.005" iterations="5" ls_iterations="8" integrator="implicitfast">
-  <flag eulerdamp="disable"/>
-</option>
+  </option>
 
   <!-- <option gravity="0 0 -9.81"/> -->
 
@@ -77,7 +76,7 @@
 
 
 
-     <model name="mjx_panda" file="mjx_panda.xml"/>
+     <model name="panda" file="panda.xml"/>
   </asset>
 
 
@@ -96,7 +95,7 @@
 
   
   <!-- 2) Front wall (runs from y = –1 to +1 at x = +1) -->
-  <body name="bar_right" pos=" 0.6  0.0  0.4">
+  <body name="bar_right" pos=" 0.9  0.0  0.4">
     <geom type="box"
           size="0.3  0.9  0.4"
           material="bar_mat"
@@ -161,8 +160,8 @@
 
 
 
- <body name="r1_frame" pos="-0.2 0 0">
-        <attach model="mjx_panda" prefix=""/>  
+ <body name="r1_frame" pos="-0.4 0 0">
+        <attach model="panda" prefix=""/>  
     </body>
 
 
