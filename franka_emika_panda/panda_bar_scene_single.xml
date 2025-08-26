@@ -76,7 +76,7 @@
 
 
 
-     <model name="panda" file="panda.xml"/>
+     <model name="panda" file="mjx_panda.xml"/>
   </asset>
 
 
@@ -161,7 +161,7 @@
 
 
  <body name="r1_frame" pos="-0.4 0 0">
-        <attach model="panda" prefix=""/>  
+        <attach model="panda" prefix="r1_"/>  
     </body>
 
 

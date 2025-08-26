@@ -105,6 +105,11 @@ class MissionManager:
         self.queue_client.enqueue_robot(robot_id)
         return
 
+    def reset_robot_and_mission(self, robot_id, mission):
+        """Unlock the robot for new missions."""
+        self.logger.info(f"Unlocking robot {robot_id}")
+        self.put_robot_in_queue(robot_id)
+        self.queue_client.enqueue_mission(mission)
 
     def get_robot_from_queue(self):
         """Find a free robot that is not currently processing a mission."""

@@ -3,6 +3,11 @@
 # This script initializes MuJoCo, runs physics simulation, and communicates
 # with a client via TCP sockets. Non-server functionality is stubbed.
 
+
+from .robot_body_control import RobotBodyControl
+from .physics_state_extractor import PhysicsStateExtractor
+from .camera_renderer import CameraRenderer  
+from .action_manager import ActionManager
 import os
 import sys
 import socket
@@ -37,20 +42,12 @@ class MuJoCoServer:
         self.locker = threading.Lock()
         self.server_socket = None
         self.logger = get_logger('MujocoServer')
-
-        # Load MuJoCo model (real)
-        self.logger.info(f"Loading MuJoCo model from: {xml_path}")
-        model_path = Path(xml_path)
-        if not model_path.exists():
-            raise FileNotFoundError(f"Model file not found: {xml_path}")
-        self.model = mujoco.MjModel.from_xml_path(str(model_path))
-        self.data  = mujoco.MjData(self.model)
-        self.logger.info("Model and data initialized successfully")
-
+        self.load_scene(xml_path)
+        
         # Set initial pose (real)
         self.data.qpos[2] = 1.0
         mujoco.mj_forward(self.model, self.data)
-
+        
         # Viewer settings
         self.render_rgb = render_rgb
         self.rgb_width  = rgb_width
@@ -61,7 +58,21 @@ class MuJoCoServer:
 
         # Networking setup
         self.setup_socket()
-        self._setup_joint_mappings()
+
+
+    def load_scene(self,xml_path):
+        # Load MuJoCo model (real)
+        self.logger.info(f"New mujoco, Loading MuJoCo model from: {xml_path}")
+        model_path = Path(xml_path)
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model file not found: {xml_path}")
+        self.model = mujoco.MjModel.from_xml_path(str(model_path))
+        self.data  = mujoco.MjData(self.model)
+        self.logger.info("Model and data initialized successfully")
+
+        self.robot_control = RobotBodyControl(self.model, self.data)
+        self.logger.info("RobotBodyControl initialized successfully")
+
 
 
 
@@ -72,15 +83,6 @@ class MuJoCoServer:
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(10)
         
-
-
-
-    def _setup_joint_mappings(self):
-        """Create dummy joint mapping for stubs"""
-        # Stub: one dummy joint
-        self.required_joint_names = ['dummy_joint']
-        self.required_joint_ids   = [0]
-
 
 
     def start_viewer(self):
@@ -104,7 +106,7 @@ class MuJoCoServer:
 
     def get_robot_list(self):
         """Return a list of robot IDs (stubbed)"""
-        return ['robot_1', 'robot_2', 'robot_3' , 'robot_4', 'robot_5', 'robot_6']
+        return ['r1']
 
     def step_once(self):
         """Advance the physics by one timestep"""
@@ -117,57 +119,18 @@ class MuJoCoServer:
             with self.locker:
                 self.viewer.sync()
 
-
-    def get_joint_state_by_robot_id(self, robot_id):
-        """
-        Stub: Return dummy joint state arrays matching mapping length
-        """
-        n = len(self.required_joint_names)
-        qpos = np.zeros(n)
-        qvel = np.zeros(n)
-        return {
-            'qpos':        qpos,
-            'qvel':        qvel,
-            'joint_names': self.required_joint_names
-        }
-
-    def get_camera_images_by_robot_id(self, robot_id):
-        """
-        Stub: Return one dummy black image
-        """
-        img = np.zeros((self.rgb_height, self.rgb_width, 3), dtype=np.uint8)
-        return [img]
-
-    def apply_commands(self, packet):
-        """
-        Stub: Read 'action' from packet and ignore
-        """
-        action = packet.action
-        if action is None:
-            self.logger.warning("No action provided in packet, skipping apply_commands")
-            return packet
-        packet.action = None  # Clear action after applying
-        self.logger.debug(f"Applying action for robot {packet.robot_id}: {action}")
-        return packet  # Return the packet unchanged for now
-
-    def fill_packet(self, packet):
-        """
-        Enrich packet with dummy state and return it
-        """
-        robot_id = packet.robot_id
-        with self.locker:
-            joint_state   = self.get_joint_state_by_robot_id(robot_id)
-            camera_images = self.get_camera_images_by_robot_id(robot_id)
+    def update_actuator_targets(self):
+        """Update actuator control targets to current joint positions"""
+        for i in range(self.model.nu):
+            # Get the joint associated with this actuator
+            joint_id = self.model.actuator_trnid[i, 0]
+            if joint_id >= 0 and joint_id < self.model.njnt:
+                # Set control target to current joint position
+                current_pos = self.data.qpos[self.model.jnt_qposadr[joint_id]]
+                self.data.ctrl[i] = current_pos
 
 
-        packet.qpos        = joint_state['qpos']
-        packet.qvel        = joint_state['qvel']
-        packet.joint_names = joint_state['joint_names']
-        # choose the appropriate camera field from your dataclass:
-        packet.wall_camera  = camera_images     # or packet.wrist_camera
-        packet.time        = time.time()
 
-        return packet
 
     def _recv_packet(self, client_socket):  # Add socket parameter
         """Receive a length‑prefixed pickled packet"""
@@ -201,10 +164,10 @@ class MuJoCoServer:
                 elif pkt is None:
                     break
                 elif pkt.action is not None:
-                    reply = self.apply_commands(pkt)
+                    reply = self.robot_control.apply_commands(pkt)
                     self.step_once()
                 else:
-                    reply = self.fill_packet(pkt)
+                    reply = self.robot_control.fill_packet(pkt)
                 self._send_packet(reply, client_socket)  # Pass socket
         except Exception as e:
             self.logger.error(f"Error in client loop: {e}")
@@ -220,6 +183,7 @@ class MuJoCoServer:
             
             # 2) step the muJoCo sim
             with self.locker:
+                self.update_actuator_targets()
                 mujoco.mj_step(self.model, self.data)
 
             # 3) redraw viewer (passive or active)
@@ -347,5 +311,6 @@ class MujocoClient:
 
 if __name__ == '__main__':
     model_path = find_model_path()
-    server = MuJoCoServer(model_path, no_viewer=True)
+    
+    server = MuJoCoServer(model_path, no_viewer=False)
     server.run()

@@ -13,7 +13,7 @@ from mujoco_folder.packet_example import Packet
 from logger_config import get_logger
 from dotenv import load_dotenv
 import os
-from mujoco_folder.mujoco_server import MujocoClient
+from mujoco_folder.mujoco_server_merge import MujocoClient
 from brain.brain_server import BrainClient
 from pathlib import Path
 
@@ -40,7 +40,7 @@ class MainOrchestrator:
         project_root = Path(__file__).resolve().parent  # .../autonomous
         self.mujoco_process = subprocess.Popen([
             sys.executable,
-            "-m", "mujoco_folder.mujoco_server"
+            "-m", "mujoco_folder.mujoco_server_merge"
         ], cwd=str(project_root))
         time.sleep(1)  # Give server time to start
 
@@ -143,7 +143,7 @@ class MainOrchestrator:
             try:
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
                 packet = mujoco_client.send_and_recv(packet)
-                self.logger.debug(f"{robot_id} Received robot state")
+                self.logger.debug(f"{robot_id} Received robot state: {packet.qpos}")
                 if packet is None:
                     self.logger.warning(f"Robot {robot_id} state is None, skipping...")
                     time.sleep(0.1)
@@ -173,6 +173,7 @@ class MainOrchestrator:
                 if tries <= 0:
                     self.logger.error(f"Max retries reached for robot {robot_id}, exiting loop")
                     raise
+                mission_manager.reset_robot_and_mission(robot_id, packet.mission)
                 self.inference_loop(robot_id, clients, tries)
                 
     def run(self):

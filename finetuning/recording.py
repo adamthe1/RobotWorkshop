@@ -60,11 +60,18 @@ class LeRobotDatasetRecorder:
         self.global_frame_index = 0
         self.episode_start_time = 0.0
         
+        # Delete confirmation state
+        self.delete_confirmation_pending = False
+        self.delete_confirmation_time = 0.0
+        
         # Dataset structure
         self.dataset_path = Path(config.output_dir) / config.dataset_name
         self.data_path = self.dataset_path / "data"
         self.videos_path = self.dataset_path / "videos"
         self.meta_path = self.dataset_path / "meta"
+        
+        # Check if dataset already exists and load existing data
+        self._load_existing_dataset()
         
         # Create directory structure
         self._setup_directories()
@@ -77,14 +84,53 @@ class LeRobotDatasetRecorder:
         if config.record_video:
             self._setup_cameras()
         
-        # Dataset metadata
-        self.total_frames = 0
-        self.total_episodes = 0
-        self.episodes_info = []
-        self.episode_stats = []
+        # Dataset metadata (will be loaded from existing if available)
+        if not hasattr(self, 'total_frames'):
+            self.total_frames = 0
+            self.total_episodes = 0
+            self.episodes_info = []
+            self.episode_stats = []
         
         print(f"[LeRobotRecorder] Initialized v2.1 dataset at: {self.dataset_path}")
         print(f"[LeRobotRecorder] Recording from cameras: {self.config.camera_names}")
+    
+    def _load_existing_dataset(self):
+        """Load existing dataset metadata if it exists"""
+        if not self.dataset_path.exists():
+            print(f"[LeRobotRecorder] Creating new dataset")
+            return
+        
+        info_path = self.meta_path / 'info.json'
+        if info_path.exists():
+            print(f"[LeRobotRecorder] Found existing dataset, loading metadata...")
+            
+            # Load info.json
+            with open(info_path, 'r') as f:
+                info = json.load(f)
+                self.total_episodes = info.get('total_episodes', 0)
+                self.total_frames = info.get('total_frames', 0)
+                self.current_episode_index = self.total_episodes
+                self.global_frame_index = self.total_frames
+            
+            # Load episodes.jsonl
+            episodes_path = self.meta_path / 'episodes.jsonl'
+            self.episodes_info = []
+            if episodes_path.exists():
+                with open(episodes_path, 'r') as f:
+                    for line in f:
+                        self.episodes_info.append(json.loads(line.strip()))
+            
+            # Load episodes_stats.jsonl
+            stats_path = self.meta_path / 'episodes_stats.jsonl'
+            self.episode_stats = []
+            if stats_path.exists():
+                with open(stats_path, 'r') as f:
+                    for line in f:
+                        self.episode_stats.append(json.loads(line.strip()))
+            
+            print(f"[LeRobotRecorder] Loaded existing dataset with {self.total_episodes} episodes, {self.total_frames} frames")
+        else:
+            print(f"[LeRobotRecorder] Creating new dataset")
     
     def _validate_cameras(self):
         """Validate that specified cameras exist in the model"""
@@ -381,6 +427,90 @@ class LeRobotDatasetRecorder:
         }
         self.episode_stats.append(episode_stats)
     
+    def delete_previous_recording(self):
+        """Delete the most recent episode recording"""
+        if self.total_episodes == 0:
+            print("[LeRobotRecorder] No episodes to delete")
+            return
+        
+        if self.is_recording:
+            print("[LeRobotRecorder] Cannot delete while recording. Stop recording first.")
+            return
+        
+        # Get the most recent episode index
+        last_episode_index = self.total_episodes - 1
+        
+        print(f"[LeRobotRecorder] Deleting episode {last_episode_index}...")
+        
+        # Delete parquet file
+        parquet_path = self.data_chunk_path / f"episode_{last_episode_index:06d}.parquet"
+        if parquet_path.exists():
+            parquet_path.unlink()
+            print(f"[LeRobotRecorder] Deleted parquet file: {parquet_path}")
+        
+        # Delete video files
+        if self.config.record_video:
+            for cam_name in self.config.camera_names:
+                video_path = (self.video_chunk_path / cam_name / 
+                             f"episode_{last_episode_index:06d}.mp4")
+                if video_path.exists():
+                    video_path.unlink()
+                    print(f"[LeRobotRecorder] Deleted video: {video_path}")
+        
+        # Update metadata - remove the last episode
+        if self.episodes_info and self.episodes_info[-1]['episode_index'] == last_episode_index:
+            deleted_episode = self.episodes_info.pop()
+            frames_in_deleted = deleted_episode['length']
+            self.total_frames -= frames_in_deleted
+        
+        if self.episode_stats and self.episode_stats[-1]['episode_index'] == last_episode_index:
+            self.episode_stats.pop()
+        
+        # Update counters
+        self.total_episodes -= 1
+        self.current_episode_index = self.total_episodes
+        self.global_frame_index = self.total_frames
+        
+        # Save updated metadata
+        self.finalize_dataset()
+        
+        print(f"[LeRobotRecorder] Successfully deleted episode {last_episode_index}")
+        print(f"[LeRobotRecorder] Dataset now has {self.total_episodes} episodes, {self.total_frames} frames")
+    
+    def handle_delete_request(self):
+        """Handle delete request with confirmation"""
+        current_time = time.time()
+        
+        if self.total_episodes == 0:
+            print("[LeRobotRecorder] No episodes to delete")
+            return
+        
+        if self.is_recording:
+            print("[LeRobotRecorder] Cannot delete while recording. Stop recording first.")
+            return
+        
+        if not self.delete_confirmation_pending:
+            # First press - set confirmation pending
+            self.delete_confirmation_pending = True
+            self.delete_confirmation_time = current_time
+            last_episode_index = self.total_episodes - 1
+            print(f"[LeRobotRecorder] WARNING: Press J again within 3 seconds to confirm deletion of episode {last_episode_index}")
+            return
+        
+        # Check if confirmation is still valid (within 3 seconds)
+        if current_time - self.delete_confirmation_time > 3.0:
+            # Confirmation expired, treat as first press
+            self.delete_confirmation_pending = True
+            self.delete_confirmation_time = current_time
+            last_episode_index = self.total_episodes - 1
+            print(f"[LeRobotRecorder] WARNING: Press J again within 3 seconds to confirm deletion of episode {last_episode_index}")
+            return
+        
+        # Confirmation valid - proceed with deletion
+        self.delete_confirmation_pending = False
+        print("[LeRobotRecorder] Deletion confirmed!")
+        self.delete_previous_recording()
+    
     def finalize_dataset(self):
         """Finalize the dataset by writing all metadata files"""
         # Write info.json
@@ -539,5 +669,7 @@ def add_lerobot_controls(recorder: LeRobotDatasetRecorder, on_key_callback):
                 if recorder.is_recording:
                     recorder.stop_recording()
                 recorder.finalize_dataset()
+            elif key == glfw.KEY_J:  # J to delete previous recording (requires confirmation)
+                recorder.handle_delete_request()
     
     return enhanced_key_callback

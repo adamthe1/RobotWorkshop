@@ -409,7 +409,9 @@ class TeleopApp:
             mujoco.mj_id2name(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, i) or f"cam{i}"
             for i in range(self.robot.model.ncam)
         ]
-        print("[INFO] Available cameras:", all_fixed)
+
+        print(f"[INFO] Available cameras: {all_fixed}")
+
         if self.cfg.camera_cycle:
             # validate names; allow "free" and any fixed camera name
             requested = list(self.cfg.camera_cycle)

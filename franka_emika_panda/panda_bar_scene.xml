@@ -235,9 +235,6 @@
         <attach model="mjx_panda" prefix="r1_"/>  
     </body>
 
-    <body name="r2_frame" pos="1 0 0">
-        <attach model="mjx_panda" prefix="r2_"/>  
-    </body>
 
 
 
