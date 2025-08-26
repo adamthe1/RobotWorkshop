@@ -140,6 +140,8 @@ class GlobalLogger:
         logging.getLogger('MissionManager').setLevel(logging.DEBUG)
         logging.getLogger('MujocoServer').setLevel(logging.DEBUG)
         logging.getLogger('MujocoClient').setLevel(logging.INFO)
+        logging.getLogger('PhysicsStateExtractor').setLevel(logging.DEBUG)
+        logging.getLogger('RobotBodyControl').setLevel(logging.DEBUG)
 
     def get_logger(self, name):
         return logging.getLogger(name)

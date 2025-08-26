@@ -117,6 +117,8 @@
 
   <worldbody>
     <light name="top" pos="0 0 2" mode="trackcom"/>
+    <!-- Fixed camera behind the robot -->
+    <camera name="behind" pos="-1.5 0 1.0" xyaxes="1 0 0   0 -1 0" fovy="60"/>
     <body name="link0" childclass="panda">
       <inertial mass="0.629769" pos="-0.041018 -0.00014 0.049974"
         fullinertia="0.00315 0.00388 0.004285 8.2904e-7 0.00015 8.2299e-6"/>
@@ -208,6 +210,8 @@
                     <geom mesh="link7_7" material="white" class="visual"/>
                     <geom mesh="link7_c" class="collision"/>
                     <body name="hand" pos="0 0 0.107" quat="0.9238795 0 0 -0.3826834">
+                      <!-- Wrist-mounted camera on the hand -->
+                      <camera name="wrist" pos="0 0 0.120" xyaxes="1 0 0   0 -1 0" fovy="60"/>
                       <inertial mass="0.73" pos="-0.01 0 0.03" diaginertia="0.001 0.0025 0.0017"/>
                       <geom mesh="hand_0" material="off_white" class="visual"/>
                       <geom mesh="hand_1" material="black" class="visual"/>

@@ -29,6 +29,7 @@
     <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
     <geom name="floor" size="0 0 0.05" type="plane" material="groundplane"/>
 
+
     <!-- table only: simple rectangular bar table in front of the robot (lowered, moved slightly away) -->
     <body name="table" pos="0.8 0.0 0.3">
       <geom type="box" size="0.3 0.9 0.35" material="table_mat" contype="1" conaffinity="1"
