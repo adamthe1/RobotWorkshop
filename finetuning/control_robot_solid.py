@@ -17,7 +17,7 @@ from recording import create_lerobot_recorder, add_lerobot_controls
 @dataclass(frozen=True)
 class TeleopConfig:
     xml_path: str = \
-        "/home/adam/Documents/coding/autonomous/franka_emika_panda/scene_bar_new.xml"
+        "/root/RobotWorkshop/franka_emika_panda/scene_bar_new_ziv.xml"
     ee_site_candidates: Tuple[str, ...] = ("ee_site",)
     arm_joint_names: Tuple[str, ...] = ("joint1","joint2","joint3","joint4","joint5","joint6","joint7")
     arm_act_names: Tuple[str, ...] = ("actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7")
@@ -34,6 +34,8 @@ class TeleopConfig:
     camera_orbit_sens: float = 100.0
     camera_pan_sens: float = 100.0
     camera_zoom_sens: float = 60.0
+    # Camera cycle: names to cycle; include "free" to allow free cam
+    camera_cycle: Optional[Tuple[str, ...]] = None
     j1_limit: float = math.radians(10.0)
     j1_limit_k: float = 4.0
     j1_center_k: float = 200.0
@@ -67,12 +69,13 @@ class InputState:
         self.grip_close=False; self.grip_open=False
         self.reset=False
         self.save_state=False
+        self.toggle_camera=False
         # per-joint jogging flags (+ increases angle, - decreases)
         self.jog_plus = [False]*7
         self.jog_minus = [False]*7
 
     def reset_oneshot(self):
-        self.grip_close=False; self.grip_open=False; self.reset=False; self.save_state=False
+        self.grip_close=False; self.grip_open=False; self.reset=False; self.save_state=False; self.toggle_camera=False
 
 
 class InputController:
@@ -87,10 +90,10 @@ class InputController:
         def on_cursor(win, x, y):
             dx = x - self.inp.last_x
             dy = y - self.inp.last_y
-            if self.inp.right_drag:
+            if self.inp.right_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ROTATE_H, dx/self.cfg.camera_orbit_sens, 0, self.scene, self.cam)
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ROTATE_V, 0, -dy/self.cfg.camera_orbit_sens, self.scene, self.cam)
-            elif self.inp.middle_drag:
+            elif self.inp.middle_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_MOVE_H,   dx/self.cfg.camera_pan_sens, 0, self.scene, self.cam)
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_MOVE_V,   0,  -dy/self.cfg.camera_pan_sens, self.scene, self.cam)
             self.inp.last_x, self.inp.last_y = x, y
@@ -101,7 +104,8 @@ class InputController:
             elif button == glfw.MOUSE_BUTTON_MIDDLE: self.inp.middle_drag = pressed
 
         def on_scroll(win, xoff, yoff):
-            mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -yoff/self.cfg.camera_zoom_sens, self.scene, self.cam)
+            if self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
+                mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -yoff/self.cfg.camera_zoom_sens, self.scene, self.cam)
 
         def on_key(win, key, scancode, action, mods):
             pressed = action != glfw.RELEASE
@@ -116,6 +120,7 @@ class InputController:
             elif key == glfw.KEY_G and action == glfw.PRESS: self.inp.grip_open  = True
             elif key == glfw.KEY_B and action == glfw.PRESS: self.inp.reset = True
             elif key == glfw.KEY_V and action == glfw.PRESS: self.inp.save_state = True
+            elif key == glfw.KEY_C and action == glfw.PRESS: self.inp.toggle_camera = True
             # Joint jog bindings: i=0..6 => (1/q), (2/w), (3/e), (4/r), (5/t), (6/y), (7/u)
             # Convention: number increases joint angle, letter decreases
             if   key == glfw.KEY_1: self.inp.jog_plus[0]  = pressed
@@ -292,6 +297,14 @@ class Renderer:
         self.cam.elevation = -65.0
         self.cam.lookat = np.array([0.5,0.0,0.35])
 
+    def set_camera(self, cam_index: int):
+        # cam_index < 0 => free, else fixed camera by index
+        if cam_index < 0:
+            self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        else:
+            self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            self.cam.fixedcamid = cam_index
+
     def initialize_gl(self):
         if self.ctx is None:
             self.ctx = mujoco.MjrContext(self.robot.model, mujoco.mjtFontScale.mjFONTSCALE_150)
@@ -310,7 +323,7 @@ class Renderer:
         g.segid = 1
         scene.ngeom += 1
 
-    def render(self, window, des_pos: np.ndarray):
+    def render(self, window, des_pos: np.ndarray, cam_name: str):
         # Ensure GL context-dependent resources exist
         if self.ctx is None:
             self.initialize_gl()
@@ -320,8 +333,10 @@ class Renderer:
         Renderer.draw_target_marker(self.scene, des_pos, self.cfg.target_radius, np.array(self.cfg.target_rgba))
         mujoco.mjr_render(viewport, self.scene, self.ctx)
         overlay = (
+            f"Cam: {cam_name} (C) | "
             "XY: ←/→,↑/↓ | Z: A/D | Grip: F/G | "
-            "Joint jog (num=+ letter=-): 1/Q, 2/W, 3/E, 4/R, 5/T, 6/Y, 7/U (Shift=coarse) | ESC quits"
+            "Joint jog (num=+ letter=-): 1/Q, 2/W, 3/E, 4/R, 5/T, 6/Y, 7/U (Shift=coarse) |\n "
+            "Rec: M start/stop, N finalize, J=delete last rec | ESC quits"
         )
         mujoco.mjr_overlay(mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, viewport, overlay, "", self.ctx)
         glfw.swap_buffers(window)
@@ -368,7 +383,7 @@ class TeleopApp:
         try:
             from pathlib import Path
             import glob
-            save_dir = Path("/home/adam/Documents/coding/autonomous/finetuning/saved_robot_states")
+            save_dir = Path("finetuning/saved_robot_states")
             if save_dir.exists():
                 files = sorted(save_dir.glob("state_*.npz"))
                 if files:
@@ -388,6 +403,26 @@ class TeleopApp:
         self.des_pos = ee_pos.copy()
         # Track desired yaw (about world Z) from current orientation
         self.des_j7 = float(math.atan2(ee_R[1,0], ee_R[0,0]))
+
+        # Cameras: from config if provided, else free + all fixed names
+        all_fixed = [
+            mujoco.mj_id2name(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, i) or f"cam{i}"
+            for i in range(self.robot.model.ncam)
+        ]
+        print("[INFO] Available cameras:", all_fixed)
+        if self.cfg.camera_cycle:
+            # validate names; allow "free" and any fixed camera name
+            requested = list(self.cfg.camera_cycle)
+            self.cam_names = []
+            for nm in requested:
+                if nm == "free" or nm in all_fixed:
+                    self.cam_names.append(nm)
+            if not self.cam_names:
+                self.cam_names = ["free"] + all_fixed
+        else:
+            self.cam_names = ["free"] + all_fixed
+        self.cam_index = 0  # 0 => free; n>0 => fixed id n-1
+        self.renderer.set_camera(-1)
 
     def _create_window(self):
         if not glfw.init():
@@ -415,7 +450,11 @@ class TeleopApp:
         last_time = time.time()
         accum = 0.0
 
-        print("[INFO] EE site:", self.robot.ee_site_name, "Controls: arrows=XY, A/D=Z, joint jog 1/Q..7/U, F/G=grip, V=save, B=reset, ESC=quit")
+        print(
+            "[INFO] EE site:",
+            self.robot.ee_site_name,
+            "Controls: arrows=XY, A/D=Z, joint jog 1/Q..7/U, F/G=grip, V=save, B=reset, C=toggle camera, M=start/stop rec, N=finalize, J=delete last recording, ESC=quit",
+        )
 
         while not glfw.window_should_close(window):
             if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS:
@@ -432,11 +471,24 @@ class TeleopApp:
                 current_action = self.robot.data.ctrl[self.robot.arm_act_ids].copy()
                 recorder.record_frame(action=current_action, done=False)
 
+            # Handle camera toggle BEFORE control tick clears one-shot flags
+            if self.inp_ctrl.inp.toggle_camera:
+                self.cam_index = (self.cam_index + 1) % len(self.cam_names)
+                name = self.cam_names[self.cam_index]
+                if name == "free":
+                    self.renderer.set_camera(-1)
+                else:
+                    cam_id = mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, name)
+                    if cam_id >= 0:
+                        self.renderer.set_camera(cam_id)
+
             for _ in range(substeps):
                 self._tick_control(dt_ctrl)
                 mujoco.mj_step(self.robot.model, self.robot.data)
 
-            self.renderer.render(window, self.des_pos)
+            cam_name = self.cam_names[self.cam_index]
+
+            self.renderer.render(window, self.des_pos, cam_name)
 
         glfw.terminate()
         if recorder.is_recording:
@@ -451,9 +503,9 @@ class TeleopApp:
             # Also write to disk (timestamped in saved_robot_states)
             try:
                 import os, time
-                os.makedirs("saved_robot_states", exist_ok=True)
+                os.makedirs("finetuning/saved_robot_states", exist_ok=True)
                 ts = time.strftime("%Y%m%d_%H%M%S")
-                path = f"saved_robot_states/state_{ts}.npz"
+                path = f"finetuning/saved_robot_states/state_{ts}.npz"
                 np.savez(path, qpos=self.saved_qpos, qvel=self.saved_qvel)
                 print(f"[INFO] Saved robot state to {path}")
             except Exception as e:
@@ -506,7 +558,7 @@ class TeleopApp:
             q_des = q + qdot * dt_ctrl
 
         # Handle stickiness and gripper before clearing one-shot flags
-        self._handle_grasp_stickiness()
+        #self._handle_grasp_stickiness()
         self.gripper.update_from_input(self.inp_ctrl.inp)
         self.inp_ctrl.inp.reset_oneshot()
 
