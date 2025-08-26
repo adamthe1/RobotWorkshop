@@ -17,7 +17,7 @@ from recording import create_lerobot_recorder, add_lerobot_controls
 @dataclass(frozen=True)
 class TeleopConfig:
     xml_path: str = \
-        "/home/adam/Documents/coding/autonomous/franka_emika_panda/scene_bar_new.xml"
+        "/root/RobotWorkshop/franka_emika_panda/scene_bar_new_ziv.xml"
     ee_site_candidates: Tuple[str, ...] = ("ee_site",)
     arm_joint_names: Tuple[str, ...] = ("joint1","joint2","joint3","joint4","joint5","joint6","joint7")
     arm_act_names: Tuple[str, ...] = ("actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7")
@@ -409,7 +409,9 @@ class TeleopApp:
             mujoco.mj_id2name(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, i) or f"cam{i}"
             for i in range(self.robot.model.ncam)
         ]
+
         print(f"[INFO] Available cameras: {all_fixed}")
+
         if self.cfg.camera_cycle:
             # validate names; allow "free" and any fixed camera name
             requested = list(self.cfg.camera_cycle)
