@@ -46,8 +46,9 @@ class TeleopConfig:
     j2_pref_k: float = 0.8
     kp_yaw: float = 6.0
     # Joint jogging
-    joint_step: float = 0.01  # rad per control tick
-    joint_step_coarse_factor: float = 4.0  # when Shift held
+    # User-requested large increments
+    joint_step: float = 8.0   # rad per control tick
+    joint_step_coarse_factor: float = 20.0  # when Shift held
     # Sticky grasp config
     grasp_capture_dist: float = 0.15
 
@@ -545,6 +546,10 @@ class TeleopApp:
         # Joint jog takes precedence over IK when any jog key is pressed
         jog_active = any(self.inp_ctrl.inp.jog_plus) or any(self.inp_ctrl.inp.jog_minus)
         q = self.robot.data.qpos[self.robot.arm_dof]
+        # Always follow IK toward the Cartesian target
+        qdot = self.ik.compute_qdot(self.des_pos, self.des_j7)
+        q_des = q + qdot * dt_ctrl
+        # If jogging, add a joint-space offset on top of IK
         if jog_active:
             step = self.cfg.joint_step * (self.cfg.joint_step_coarse_factor if self.inp_ctrl.inp.shift else 1.0)
             delta = np.zeros(7)
@@ -553,17 +558,11 @@ class TeleopApp:
                     delta[i] += step
                 if self.inp_ctrl.inp.jog_minus[i]:
                     delta[i] -= step
-            # Directly apply joint increments to state (force movement), respecting actuator ctrlrange
-            q_des = q + delta
-            for i, aid in enumerate(self.robot.arm_act_ids):
-                lo, hi = self.robot.model.actuator_ctrlrange[aid]
-                q_des[i] = float(clamp(q_des[i], lo, hi))
-            # Write new joint positions directly and re-forward kinematics
-            self.robot.data.qpos[self.robot.arm_dof] = q_des
-            mujoco.mj_forward(self.robot.model, self.robot.data)
-        else:
-            qdot = self.ik.compute_qdot(self.des_pos, self.des_j7)
-            q_des = q + qdot * dt_ctrl
+            q_des = q_des + delta
+        # Clamp to actuator control ranges
+        for i, aid in enumerate(self.robot.arm_act_ids):
+            lo, hi = self.robot.model.actuator_ctrlrange[aid]
+            q_des[i] = float(clamp(q_des[i], lo, hi))
 
         # Handle stickiness and gripper before clearing one-shot flags
         #self._handle_grasp_stickiness()
