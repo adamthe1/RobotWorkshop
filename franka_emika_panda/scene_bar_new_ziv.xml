@@ -72,7 +72,7 @@
 
 
     
-   <model name="panda" file="panda_nokey.xml"/>
+   <model name="panda" file="panda_for_duplicating.xml"/>
   </asset>
 
   <worldbody>
@@ -133,8 +133,8 @@
 
 </body>
  <body name="r1_frame" pos="0 0 0">
-        <attach model="panda" prefix="r1_"/>  
-    </body>
+  <attach model="panda" body="link0" prefix="r1_"/>
+</body>
 
 
 

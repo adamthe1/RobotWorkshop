@@ -25,6 +25,7 @@ class TeleopConfig:
     arm_joint_names: Tuple[str, ...] = ("joint1","joint2","joint3","joint4","joint5","joint6","joint7")
     arm_act_names: Tuple[str, ...] = ("actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7")
     gripper_act_name: str = "actuator8"
+    add_prefix: str = "r1_"
     up_axis: int = 2
     xy_step: float = 0.01
     z_step: float = 0.01
@@ -51,6 +52,7 @@ class TeleopConfig:
     joint_step_coarse_factor: float = 20.0  # when Shift held
     # Sticky grasp config
     grasp_capture_dist: float = 0.15
+
 
 
 # ------------------------------ Utilities ------------------------------

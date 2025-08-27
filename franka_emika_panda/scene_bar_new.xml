@@ -53,6 +53,10 @@
       <geom name="bottle_body" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
             solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <!-- wider base plate to improve stability when placing the bottle down -->
+      <geom name="bottle_base" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
       <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
       <!-- Mass/friction tuned for gripping: was density="2500", friction="2.5 0.06 0.006" -->
       <!-- Revert: restore density and original friction above -->
