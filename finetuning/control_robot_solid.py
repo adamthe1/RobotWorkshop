@@ -386,10 +386,8 @@ class TeleopApp:
         try:
             from pathlib import Path
             import glob
-            pwd = os.getcwd()
-            if not pwd.endswith("finetuning"):
-                pwd = os.path.join(pwd, "finetuning")
-            save_dir = os.path.join(pwd, "saved_robot_states")
+            pwd = os.getenv("MAIN_DIRECTORY")
+            save_dir = os.path.join(pwd, "finetuning", "saved_robot_states")
             if os.path.exists(save_dir):
                 files = sorted(glob.glob(os.path.join(save_dir, "state_*.npz")))
                 if files:
@@ -511,10 +509,8 @@ class TeleopApp:
             # Also write to disk (timestamped in saved_robot_states)
             try:
                 import time
-                pwd = os.getcwd()
-                if not pwd.endswith("finetuning"):
-                    pwd = os.path.join(pwd, "finetuning")
-                save_dir = os.path.join(pwd, "saved_robot_states")
+                pwd = os.getenv("MAIN_DIRECTORY")
+                save_dir = os.path.join(pwd, "finetuning", "saved_robot_states")
                 os.makedirs(save_dir, exist_ok=True)
                 ts = time.strftime("%Y%m%d_%H%M%S")
                 path = os.path.join(save_dir, f"state_{ts}.npz")

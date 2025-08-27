@@ -14,12 +14,16 @@ from datetime import datetime
 import tempfile
 import shutil
 import glfw
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 @dataclass
 class RecordingConfig:
     """Configuration for LeRobot recording following v2.1 format"""
     dataset_name: str = "mujoco_teleop"
-    output_dir: str = "./recordings" 
+    output_dir: str = os.getenv("MAIN_DIRECTORY") + "/finetuning/datasets" 
     fps: int = 30
     robot_type: str = "franka_panda"
     record_video: bool = True
@@ -29,7 +33,8 @@ class RecordingConfig:
     camera_names: List[str] = None
     use_robot_prefix: bool = False  # NEW: control robot prefix usage
     robot_prefix: str = "r1_"      # NEW: default robot prefix
-    
+    task: str = "robot_manipulation"
+
     def __post_init__(self):
         if self.camera_names is None:
             # Default camera names from mjx_panda.xml
@@ -90,7 +95,8 @@ class LeRobotDatasetRecorder:
             self.total_episodes = 0
             self.episodes_info = []
             self.episode_stats = []
-        
+
+        self.current_task = config.task
         print(f"[LeRobotRecorder] Initialized v2.1 dataset at: {self.dataset_path}")
         print(f"[LeRobotRecorder] Recording from cameras: {self.config.camera_names}")
     
@@ -200,7 +206,7 @@ class LeRobotDatasetRecorder:
             renderer = mujoco.MjrContext(self.model, mujoco.mjtFontScale.mjFONTSCALE_150)
             self.renderers[cam_name] = renderer
 
-    def start_recording(self, task_description: str = "robot_manipulation"):
+    def start_recording(self):
         """Start recording a new episode"""
         if self.is_recording:
             self.stop_recording()
@@ -213,9 +219,6 @@ class LeRobotDatasetRecorder:
         # Setup video writers for this episode
         if self.config.record_video:
             self._start_video_recording()
-        
-        # Store task info for this episode
-        self.current_task = task_description
         
         print(f"[LeRobotRecorder] Started recording episode {self.current_episode_index}")
     
@@ -624,10 +627,13 @@ class LeRobotDatasetRecorder:
             }
             f.write(json.dumps(task_data) + '\n')
 
+    def get_task(self):
+        return self.current_task
+
 # Integration functions for control_robot.py
 def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData, 
                            dataset_name: str = "panda_teleop", 
-                           output_dir: str = "./datasets",
+                           output_dir: str = f"{os.getenv('MAIN_DIRECTORY')}/finetuning/datasets",
                            robot_prefix: str = "r1_",
                            use_prefix: bool = True) -> LeRobotDatasetRecorder:
     """Create a LeRobot dataset recorder
@@ -664,7 +670,7 @@ def add_lerobot_controls(recorder: LeRobotDatasetRecorder, on_key_callback):
                 if recorder.is_recording:
                     recorder.stop_recording()
                 else:
-                    recorder.start_recording("pick_and_place")
+                    recorder.start_recording()
             elif key == glfw.KEY_N:  # N to finalize dataset
                 if recorder.is_recording:
                     recorder.stop_recording()

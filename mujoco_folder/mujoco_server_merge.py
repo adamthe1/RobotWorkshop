@@ -312,5 +312,5 @@ class MujocoClient:
 if __name__ == '__main__':
     model_path = find_model_path()
     
-    server = MuJoCoServer(model_path, no_viewer=True)
+    server = MuJoCoServer(model_path, no_viewer=False)
     server.run()
