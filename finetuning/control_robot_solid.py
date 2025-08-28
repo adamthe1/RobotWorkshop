@@ -79,18 +79,23 @@ class InputState:
         self.left=False; self.right=False; self.up=False; self.down=False
         self.z_up=False; self.z_down=False
         self.shift=False
-        self.right_drag=False; self.middle_drag=False
+        # Mouse drag states: left = orbit, right = pan
+        self.left_drag=False; self.right_drag=False; self.middle_drag=False
         self.last_x=0.0; self.last_y=0.0
         self.grip_close=False; self.grip_open=False
         self.reset=False
+        # Force-reset to XML defaults (ignores any saved state)
+        self.reset_xml=False
         self.save_state=False
         self.toggle_camera=False
+        # Toggle IK (Jacobian following)
+        self.toggle_ik=False
         # per-joint jogging flags (+ increases angle, - decreases)
         self.jog_plus = [False]*7
         self.jog_minus = [False]*7
 
     def reset_oneshot(self):
-        self.grip_close=False; self.grip_open=False; self.reset=False; self.save_state=False; self.toggle_camera=False
+        self.grip_close=False; self.grip_open=False; self.reset=False; self.reset_xml=False; self.save_state=False; self.toggle_camera=False; self.toggle_ik=False
 
 
 class InputController:
@@ -105,17 +110,20 @@ class InputController:
         def on_cursor(win, x, y):
             dx = x - self.inp.last_x
             dy = y - self.inp.last_y
-            if self.inp.right_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
+            # Left-drag: orbit (rotate)
+            if self.inp.left_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ROTATE_H, dx/self.cfg.camera_orbit_sens, 0, self.scene, self.cam)
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ROTATE_V, 0, -dy/self.cfg.camera_orbit_sens, self.scene, self.cam)
-            elif self.inp.middle_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
+            # Right-drag: pan (move)
+            elif self.inp.right_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_MOVE_H,   dx/self.cfg.camera_pan_sens, 0, self.scene, self.cam)
                 mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_MOVE_V,   0,  -dy/self.cfg.camera_pan_sens, self.scene, self.cam)
             self.inp.last_x, self.inp.last_y = x, y
 
         def on_button(win, button, action, mods):
             pressed = action == glfw.PRESS
-            if button == glfw.MOUSE_BUTTON_RIGHT:   self.inp.right_drag  = pressed
+            if button == glfw.MOUSE_BUTTON_LEFT:     self.inp.left_drag   = pressed
+            elif button == glfw.MOUSE_BUTTON_RIGHT:  self.inp.right_drag  = pressed
             elif button == glfw.MOUSE_BUTTON_MIDDLE: self.inp.middle_drag = pressed
 
         def on_scroll(win, xoff, yoff):
@@ -125,17 +133,24 @@ class InputController:
         def on_key(win, key, scancode, action, mods):
             pressed = action != glfw.RELEASE
             self.inp.shift = (mods & glfw.MOD_SHIFT) != 0
-            if   key == glfw.KEY_LEFT:  self.inp.left  = pressed
-            elif key == glfw.KEY_RIGHT: self.inp.right = pressed
-            elif key == glfw.KEY_UP:    self.inp.up    = pressed
-            elif key == glfw.KEY_DOWN:  self.inp.down  = pressed
+            # Remapped arrow keys for red circle controls:
+            # - Behavior previously on UP is now on LEFT
+            # - Behavior previously on DOWN is now on RIGHT
+            # - Behavior previously on RIGHT is now on UP
+            # - Behavior previously on LEFT is now on DOWN
+            if   key == glfw.KEY_RIGHT:  self.inp.down  = pressed
+            elif key == glfw.KEY_LEFT: self.inp.up    = pressed
+            elif key == glfw.KEY_UP:    self.inp.right = pressed
+            elif key == glfw.KEY_DOWN:  self.inp.left  = pressed
             elif key == glfw.KEY_A:     self.inp.z_up   = pressed
             elif key == glfw.KEY_D:     self.inp.z_down = pressed
             elif key == glfw.KEY_F and action == glfw.PRESS: self.inp.grip_close = True
             elif key == glfw.KEY_G and action == glfw.PRESS: self.inp.grip_open  = True
             elif key == glfw.KEY_B and action == glfw.PRESS: self.inp.reset = True
+            elif key == glfw.KEY_Z and action == glfw.PRESS: self.inp.reset_xml = True
             elif key == glfw.KEY_V and action == glfw.PRESS: self.inp.save_state = True
             elif key == glfw.KEY_C and action == glfw.PRESS: self.inp.toggle_camera = True
+            elif key == glfw.KEY_X and action == glfw.PRESS: self.inp.toggle_ik = True
             # Joint jog bindings: i=0..6 => (1/q), (2/w), (3/e), (4/r), (5/t), (6/y), (7/u)
             # Convention: number increases joint angle, letter decreases
             if   key == glfw.KEY_1: self.inp.jog_plus[0]  = pressed
@@ -353,7 +368,8 @@ class Renderer:
         mujoco.mjr_render(viewport, self.scene, self.ctx)
         overlay = (
             f"Cam: {cam_name} (C) | "
-            "XY: ←/→,↑/↓ | Z: A/D | Grip: F/G | "
+            "XY: ←/→,↑/↓ | Z: A/D | Grip: F/G | IK: X toggle | "
+            "Reset: B(saved-or-xml), Z(XML) | "
             "Joint jog (num=+ letter=-): 1/Q, 2/W, 3/E, 4/R, 5/T, 6/Y, 7/U (Shift=coarse) |\n "
             "Rec: M start/stop, N finalize, J=delete last rec | ESC quits"
         )
@@ -390,6 +406,8 @@ class TeleopApp:
         self.renderer = Renderer(self.cfg, self.robot)
         self.inp_ctrl = InputController(self.cfg, self.robot.model, self.renderer.scene, self.renderer.cam)
         self.gripper = GripperController(self.robot)
+        # IK enable toggle (X key). When False, IK target tracking is disabled.
+        self.ik_enabled: bool = True
         # Sticky attach state
         self.attached: Optional[str] = None
         self.attach_offset_pos = np.zeros(3)
@@ -435,11 +453,17 @@ class TeleopApp:
         if self.cfg.camera_cycle:
             # validate names; allow "free" and any fixed camera name
             requested = list(self.cfg.camera_cycle)
+            fixed_in_requested = []
             self.cam_names = []
             for nm in requested:
-                if nm == "free" or nm in all_fixed:
+                if nm == "free":
                     self.cam_names.append(nm)
-            if not self.cam_names:
+                elif nm in all_fixed:
+                    self.cam_names.append(nm)
+                    fixed_in_requested.append(nm)
+            # If no valid fixed cameras were requested, fall back to include all fixed
+            if not fixed_in_requested:
+                # Ensure 'free' is first, then add all fixed cameras
                 self.cam_names = ["free"] + all_fixed
         else:
             self.cam_names = ["free"] + all_fixed
@@ -467,6 +491,8 @@ class TeleopApp:
         glfw.set_key_callback(window, enhanced_on_key)
         # Initialize GL-dependent renderer state now that a context exists
         self.renderer.initialize_gl()
+        # Track C edge to robustly toggle camera even if callbacks are wrapped
+        self._cam_toggle_down = False
 
         dt_ctrl = 1.0 / self.cfg.ctrl_hz
         last_time = time.time()
@@ -475,7 +501,7 @@ class TeleopApp:
         print(
             "[INFO] EE site:",
             self.robot.ee_site_name,
-            "Controls: arrows=XY, A/D=Z, joint jog 1/Q..7/U, F/G=grip, V=save, B=reset, C=toggle camera, M=start/stop rec, N=finalize, J=delete last recording, ESC=quit",
+            "Controls: arrows=XY, A/D=Z, joint jog 1/Q..7/U, F/G=grip, V=save, B=reset(saved-or-xml), Z=reset(XML), C=toggle camera, X=toggle IK, M=start/stop rec, N=finalize, J=delete last recording, ESC=quit",
         )
 
         while not glfw.window_should_close(window):
@@ -493,16 +519,29 @@ class TeleopApp:
                 current_action = self.robot.data.ctrl[self.robot.arm_act_ids].copy()
                 recorder.record_frame(action=current_action, done=False)
 
-            # Handle camera toggle BEFORE control tick clears one-shot flags
-            if self.inp_ctrl.inp.toggle_camera:
+            # Handle camera toggle BEFORE control tick clears one-shot flags.
+            # Also detect C key edge in case callbacks are overridden.
+            c_pressed = glfw.get_key(window, glfw.KEY_C) == glfw.PRESS
+            cam_toggle = self.inp_ctrl.inp.toggle_camera or (c_pressed and not self._cam_toggle_down)
+            if cam_toggle:
                 self.cam_index = (self.cam_index + 1) % len(self.cam_names)
                 name = self.cam_names[self.cam_index]
                 if name == "free":
                     self.renderer.set_camera(-1)
+                    print("[INFO] Camera switched to: free (C)")
                 else:
                     cam_id = mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, name)
                     if cam_id >= 0:
                         self.renderer.set_camera(cam_id)
+                        print(f"[INFO] Camera switched to fixed: {name} (id={cam_id}) (C)")
+                    else:
+                        print(f"[WARN] Camera name not found: {name}")
+            self._cam_toggle_down = c_pressed
+
+            # Toggle IK tracking if requested
+            if self.inp_ctrl.inp.toggle_ik:
+                self.ik_enabled = not self.ik_enabled
+                print(f"[INFO] IK tracking {'ENABLED' if self.ik_enabled else 'DISABLED'} (X)")
 
             for _ in range(substeps):
                 self._tick_control(dt_ctrl)
@@ -532,10 +571,41 @@ class TeleopApp:
                 path = os.path.join(save_dir, f"state_{ts}.npz")
                 np.savez(path, qpos=self.saved_qpos, qvel=self.saved_qvel)
                 print(f"[INFO] Saved robot state to {path}")
+                # Additionally save only single-robot joint state for easy replication across duplicates
+                try:
+                    base_joint_names = [f"joint{i}" for i in range(1,8)] + ["finger_joint1", "finger_joint2"]
+                    names_out = []
+                    qpos_out = []
+                    qvel_out = []
+                    prefix = self.cfg.add_prefix if self.cfg.use_prefix else ""
+                    for nm in base_joint_names:
+                        full = f"{prefix}{nm}"
+                        jid = mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_JOINT, full)
+                        if jid < 0:
+                            continue
+                        jtype = int(self.robot.model.jnt_type[jid])
+                        if jtype not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+                            continue
+                        qposadr = int(self.robot.model.jnt_qposadr[jid])
+                        dofadr = int(self.robot.model.jnt_dofadr[jid])
+                        names_out.append(nm)
+                        qpos_out.append(float(self.robot.data.qpos[qposadr]))
+                        qvel_out.append(float(self.robot.data.qvel[dofadr]))
+                    if names_out:
+                        saved_dir2 = os.path.join(pwd, "xml_robots", "saved_state")
+                        os.makedirs(saved_dir2, exist_ok=True)
+                        path2 = os.path.join(saved_dir2, f"robot_joints_{ts}.npz")
+                        np.savez(path2, joint_names=np.array(names_out, dtype=object), qpos=np.array(qpos_out), qvel=np.array(qvel_out))
+                        print(f"[INFO] Saved per-robot joint state to {path2} ({len(names_out)} joints)\
+                              Use this to replicate across duplicated robots.")
+                    else:
+                        print("[WARN] No hinge/slide joints found to save per-robot joint state.")
+                except Exception as e:
+                    print("[WARN] Could not save per-robot joint-only state:", e)
             except Exception as e:
                 print("[WARN] Could not save robot state to file:", e)
 
-        # Reset scene if requested
+        # Reset scene if requested (B = saved if available, else XML; Z = always XML)
         if self.inp_ctrl.inp.reset:
             if self.saved_qpos is not None and self.saved_qvel is not None:
                 self.robot.data.qpos[:] = self.saved_qpos
@@ -546,6 +616,14 @@ class TeleopApp:
                 mujoco.mj_resetData(self.robot.model, self.robot.data)
                 mujoco.mj_forward(self.robot.model, self.robot.data)
                 print("[INFO] Reset to XML default state")
+            ee_pos, _ = self.robot.ee_pose()
+            self.des_pos = ee_pos.copy()
+            self.attached = None
+
+        if self.inp_ctrl.inp.reset_xml:
+            mujoco.mj_resetData(self.robot.model, self.robot.data)
+            mujoco.mj_forward(self.robot.model, self.robot.data)
+            print("[INFO] Reset to XML default state (Z)")
             ee_pos, _ = self.robot.ee_pose()
             self.des_pos = ee_pos.copy()
             self.attached = None
@@ -561,9 +639,12 @@ class TeleopApp:
         # Joint jog takes precedence over IK when any jog key is pressed
         jog_active = any(self.inp_ctrl.inp.jog_plus) or any(self.inp_ctrl.inp.jog_minus)
         q = self.robot.data.qpos[self.robot.arm_dof]
-        # Always follow IK toward the Cartesian target
-        qdot = self.ik.compute_qdot(self.des_pos, self.des_j7)
-        q_des = q + qdot * dt_ctrl
+        # Follow IK toward the Cartesian target unless IK is disabled
+        if self.ik_enabled:
+            qdot = self.ik.compute_qdot(self.des_pos, self.des_j7)
+            q_des = q + qdot * dt_ctrl
+        else:
+            q_des = q.copy()
         # If jogging, add a joint-space offset on top of IK
         if jog_active:
             step = self.cfg.joint_step * (self.cfg.joint_step_coarse_factor if self.inp_ctrl.inp.shift else 1.0)

@@ -20,10 +20,10 @@ from pathlib import Path
 from .packet_example import Packet, RobotListPacket
 
 import mujoco
-import mujoco.viewer
 from .compose_scene import save_xml_file
 from logger_config import get_logger
 import atexit
+import signal
 
 from dotenv import load_dotenv
 import os
@@ -48,9 +48,12 @@ class MuJoCoServer:
         self.robot_ids = ['r1']
         self.load_scene(xml_path, num_robots=num_robots)
         
-        # Set initial pose (real)
-        self.data.qpos[2] = 1.0
-        mujoco.mj_forward(self.model, self.data)
+        # Optionally load saved state from disk
+        loaded = self.load_saved_state_if_enabled()
+        if not loaded:
+            # Fallback initial tweak if no saved state was loaded
+            self.data.qpos[2] = 1.0
+            mujoco.mj_forward(self.model, self.data)
         
         # Viewer settings
         self.render_rgb = render_rgb
@@ -65,6 +68,7 @@ class MuJoCoServer:
         # Networking setup
         self.setup_socket()
         atexit.register(self.cleanup_on_exit)
+        # Note: main process handles SIGINT/SIGTERM; server exits via terminal
 
 
     def load_scene(self, xml_path, num_robots=3):
@@ -87,6 +91,70 @@ class MuJoCoServer:
 
 
 
+    def load_saved_state_if_enabled(self) -> bool:
+        """Load a single-robot joint-only state and apply to all robots.
+
+        When LOAD_SAVED_STATE is enabled, finds the newest .npz under
+        xml_robots/saved_state containing keys:
+          - joint_names (base names, e.g., 'joint1', 'finger_joint1', ...)
+          - qpos, qvel (same length as joint_names)
+
+        For each robot listed in self.robot_ids, prefixes each base joint name
+        (e.g., 'r1_joint1') and applies hinge/slide joint position/velocity.
+        Returns True if anything was applied, else False.
+        """
+        flag = os.getenv("LOAD_SAVED_STATE", "0").strip().lower()
+        if flag not in ("1", "true", "yes", "on"):  # disabled
+            return False
+        try:
+            base = os.getenv("MAIN_DIRECTORY") or str(Path.cwd())
+            saved_dir = Path(base) / "xml_robots" / "saved_state"
+            if not saved_dir.exists():
+                self.logger.warning(f"LOAD_SAVED_STATE set but directory not found: {saved_dir}")
+                return False
+            candidates = sorted(saved_dir.glob("*.npz"), key=lambda p: p.stat().st_mtime)
+            if not candidates:
+                self.logger.warning(f"LOAD_SAVED_STATE set but no .npz files in: {saved_dir}")
+                return False
+            path = candidates[-1]
+            arr = np.load(path, allow_pickle=True)
+            if not ("joint_names" in arr and "qpos" in arr and "qvel" in arr):
+                self.logger.warning(f"Saved file {path} does not contain joint_names/qpos/qvel; skipping")
+                return False
+            names = [str(x) for x in arr["joint_names"].tolist()]
+            qpos = np.array(arr["qpos"], dtype=float).reshape(-1)
+            qvel = np.array(arr["qvel"], dtype=float).reshape(-1)
+            if not (len(names) == len(qpos) == len(qvel)):
+                self.logger.warning(f"Saved joint arrays length mismatch in {path}")
+                return False
+
+            applied = 0
+            for rid in self.robot_ids:
+                prefix = f"{rid}_"
+                for nm, qp, qv in zip(names, qpos, qvel):
+                    full = prefix + nm
+                    jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, full)
+                    if jid < 0:
+                        continue
+                    jtype = int(self.model.jnt_type[jid])
+                    if jtype not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+                        continue
+                    qposadr = int(self.model.jnt_qposadr[jid])
+                    dofadr = int(self.model.jnt_dofadr[jid])
+                    self.data.qpos[qposadr] = float(qp)
+                    self.data.qvel[dofadr] = float(qv)
+                    applied += 1
+
+            if applied == 0:
+                self.logger.warning(f"No matching joints found when applying {path} to robots {self.robot_ids}")
+                return False
+            mujoco.mj_forward(self.model, self.data)
+            self.logger.info(f"Applied joint-only saved state from {path} to {len(self.robot_ids)} robots; joints set: {applied}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Failed to load saved state: {e}")
+            return False
+
     def setup_socket(self):
         """Set up the TCP server socket"""
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -94,22 +162,42 @@ class MuJoCoServer:
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(10)
         
+        
 
 
     def start_viewer(self):
-        """Launch MuJoCo passive viewer in background thread"""
+        """Launch lightweight GLFW viewer and render in this thread.
+
+        Important: OpenGL contexts are thread-affine. We both create and render
+        from the same thread here to avoid a black screen.
+        """
         try:
+            from .lightweight_viewer import LightweightViewer
+
             if self.viewer is not None:
-                self.viewer.close()
+                try:
+                    self.viewer.close()
+                except Exception:
+                    pass
                 self.viewer = None
                 time.sleep(0.1)  # Brief pause for cleanup
-                
-            self.logger.info("Launching MuJoCo viewer...")
-            self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
-            time.sleep(0.5)
-            self.logger.info("Viewer initialized successfully")
+
+            self.logger.info("Launching lightweight MuJoCo GLFW viewer...")
+            self.viewer = LightweightViewer(self.model, self.data, 800, 600, "MuJoCo Viewer").launch()
+            self.logger.info("Lightweight viewer initialized successfully; entering render loop")
+
+            # Render loop at ~60 FPS in this thread
+            dt = 1.0 / 60.0
+            while self.running and self.viewer.is_running():
+                with self.locker:
+                    # Render the current scene safely while physics may update
+                    self.viewer.sync()
+                time.sleep(dt)
+
+            # Viewer loop ended; leave server running until terminal exit
+
         except Exception as e:
-            self.logger.error(f"Failed to initialize viewer: {e}")
+            self.logger.error(f"Failed to initialize lightweight viewer: {e}")
             self.viewer = None
     
     def cleanup_on_exit(self):
@@ -119,6 +207,7 @@ class MuJoCoServer:
                 self.viewer.close()
             except:
                 pass
+        
 
     def fill_robot_list(self, packet):
         """
@@ -209,9 +298,7 @@ class MuJoCoServer:
             with self.locker:
                 mujoco.mj_step(self.model, self.data)
 
-            # 3) redraw viewer (passive or active)
-            if self.no_viewer is False:
-                self.update_viewer()
+            # 3) viewer renders from its own thread that owns the GL context
 
             # 4) sleep until next frame
             next_time += dt
@@ -343,5 +430,5 @@ class MujocoClient:
 
 
 if __name__ == '__main__':
-    server = MuJoCoServer(xml_path=find_model_path(), num_robots=1)
+    server = MuJoCoServer(xml_path=find_model_path(), num_robots=3)
     server.run()

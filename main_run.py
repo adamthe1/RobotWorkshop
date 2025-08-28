@@ -158,11 +158,11 @@ class MainOrchestrator:
                     self.inference_loop(robot_id, clients)
                 
                 # Step 4: Send to Brain, get action
-                packet = brain_client.send_and_recv(packet)
+                #packet = brain_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Received action from Brain")
 
-                packet = mujoco_client.send_and_recv(packet)
-                self.logger.debug(f"{robot_id}Action sent, result: {packet.action}")
+                #packet = mujoco_client.send_and_recv(packet)
+                #self.logger.debug(f"{robot_id}Action sent, result: {packet.action}")
 
                 time.sleep(0.1)
                 

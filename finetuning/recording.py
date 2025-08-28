@@ -38,7 +38,7 @@ class RecordingConfig:
     def __post_init__(self):
         if self.camera_names is None:
             # Default camera names from mjx_panda.xml
-            base_cameras = ["cam1"]  # Camera in the hand
+            base_cameras = ["main_cam", "wrist_cam"]  # Camera in the hand
             
             if self.use_robot_prefix:
                 # Add robot prefix to camera names
