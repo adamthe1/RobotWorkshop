@@ -2,7 +2,7 @@
 import sys
 import time
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -17,15 +17,16 @@ from recording import create_lerobot_recorder, add_lerobot_controls
 
 load_dotenv()
 # ---------------------------- Configuration ----------------------------
-@dataclass(frozen=True)
+@dataclass
 class TeleopConfig:
     xml_path: str = \
         os.getenv("CONTROL_ROBOT_PATH", "/home/adam/Documents/coding/autonomous/franka_emika_panda/scene_bar_new_ziv.xml")
-    ee_site_candidates: Tuple[str, ...] = ("ee_site",)
-    arm_joint_names: Tuple[str, ...] = ("joint1","joint2","joint3","joint4","joint5","joint6","joint7")
-    arm_act_names: Tuple[str, ...] = ("actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7")
+    ee_site_candidates: List[str] = field(default_factory=lambda: ["ee_site"])
+    arm_joint_names: List[str] = field(default_factory=lambda: ["joint1","joint2","joint3","joint4","joint5","joint6","joint7"])
+    arm_act_names: List[str] = field(default_factory=lambda: ["actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7"])
     gripper_act_name: str = "actuator8"
     add_prefix: str = "r1_"
+    use_prefix: bool = True
     up_axis: int = 2
     xy_step: float = 0.01
     z_step: float = 0.01
@@ -53,6 +54,14 @@ class TeleopConfig:
     # Sticky grasp config
     grasp_capture_dist: float = 0.15
 
+    def __post_init__(self):
+        if self.camera_cycle is None:
+            self.camera_cycle = ("free", "top", "front", "back", "left", "right")
+        if self.use_prefix:
+            self.ee_site_candidates = [f"{self.add_prefix}{name}" for name in self.ee_site_candidates]
+            self.arm_joint_names = [f"{self.add_prefix}{name}" for name in self.arm_joint_names]
+            self.arm_act_names = [f"{self.add_prefix}{name}" for name in self.arm_act_names]
+            self.gripper_act_name = f"{self.add_prefix}{self.gripper_act_name}"
 
 
 # ------------------------------ Utilities ------------------------------
@@ -168,7 +177,11 @@ class RobotModel:
         if len(self.arm_dof) != 7:
             raise RuntimeError(f"Expected 7 arm DoFs, got {len(self.arm_dof)}")
         self.arm_act_ids = [self._actuator_index(nm) for nm in cfg.arm_act_names]
-        j7_abs = self._dof_indices_for_joints(("joint7",))[0]
+        if cfg.use_prefix:
+            joint7 = f"{cfg.add_prefix}joint7"
+        else:
+            joint7 = "joint7"
+        j7_abs = self._dof_indices_for_joints((joint7,))[0]
         self.pos7 = int(np.where(self.arm_dof == j7_abs)[0][0])
 
         try:

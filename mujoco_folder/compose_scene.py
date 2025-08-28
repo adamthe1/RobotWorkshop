@@ -1,0 +1,222 @@
+#!/usr/bin/env python3
+"""
+MuJoCo Scene Generator for Panda Robot Bar Scene
+Allows easy Y-offset adjustment and multiple robot creation with incrementing prefixes.
+All objects (except floor) duplicate with each robot using the same spacing.
+"""
+
+def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
+    """
+    Generate MuJoCo XML for panda robot bar scene.
+    
+    Args:
+        y_offset (float): Y-axis offset to apply to all objects
+        num_robots (int): Number of robots to create
+        robot_spacing (float): Spacing between robots in Y direction
+    
+    Returns:
+        str: Complete MuJoCo XML string
+    """
+    
+    # Helper function to apply Y offset to position
+    def pos_with_offset(x, y, z, robot_index=0):
+        total_y = y + y_offset + (robot_index * robot_spacing)
+        return f"{x} {total_y} {z}"
+    
+    # Start building XML
+    xml_content = f'''<mujoco model="panda scene (bar table)">
+
+  <option integrator="implicitfast"/>
+  <compiler angle="radian" meshdir="assets" autolimits="true" assetdir="meshes"/>
+
+  <statistic center="0.3 0 0.4" extent="1"/>
+
+  <visual>
+    <headlight diffuse="0.6 0.6 0.6" ambient="0.3 0.3 0.3" specular="0 0 0"/>
+    <rgba haze="0.15 0.25 0.35 1"/>
+    <global azimuth="120" elevation="-20"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+      markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+
+    <mesh name="wine_bottle_mesh" file="WineBottle.obj"/>
+    <mesh name="wine_glass_mesh" file="wine_glass.obj"/>
+
+    <material name="bar_mat" rgba="0.8 0.8 0.8 1" texture="marble_tex"
+            texuniform="true"
+            texrepeat="1 1"
+            reflectance="0.2" shininess="0.5" specular="1"/>
+
+    <!-- Red liquid -->
+    <material name="liquid_red" rgba="0.6 0.0 0.0 0.9" reflectance="0.2" shininess="0.3" specular="0.4"/>
+
+    <material name="glass_mat" rgba="1 0.9 0.9 0.5" reflectance="0.5" shininess="0.9" specular="1"/>
+    <material name="glass_green" rgba="0.2 0.8 0.2 0.6" reflectance="0.5" shininess="0.9" specular="1"/>
+    <material name="glass_yellow" rgba="0.9 0.9 0.2 0.6" reflectance="0.5" shininess="0.9" specular="1"/>
+
+    <material name="wine_mat"
+              rgba="0.6 0.0 0.0 0.8" 
+              reflectance="0.2"
+              shininess="0.3"
+              specular="0.4"/>
+
+    <texture name="marble_tex"
+               type="2d"
+               file="grey.png"
+               width="2000"
+               height="1000"/>
+
+    <texture name="wood_tex"
+               type="2d"
+               file="wood3.png"
+               width="20"
+               height="20"/>
+
+    <!-- 2. Create a material that uses that texture -->
+    <material name="wood_floor_mat"
+              texture="wood_tex"
+              texuniform="true"
+              texrepeat="2.5 2.5"
+              reflectance="1"
+              shininess="0"
+              specular="1"/> 
+
+    <model name="panda" file="panda_for_duplicating.xml"/>
+  </asset>
+
+  <worldbody>'''
+
+    # Add shared floor (only object that doesn't duplicate)
+    xml_content += f'''
+    <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
+    <body name="wood_floor" pos="0 0 0">
+      <geom type="box" size="200 200 0.01"
+            material="wood_floor_mat"
+            contype="0" conaffinity="0"/>
+    </body>'''
+
+    robot_ids = []
+    # Add complete scene for each robot
+    for j in range(num_robots):
+        i = j + 1
+        prefix = f"r{i}_" if i > 0 else ""
+        robot_ids.append(f'r{i}')
+
+        xml_content += f'''
+
+    <!-- ==================== ROBOT {i} SCENE ==================== -->
+    
+    <!-- Robot {i} -->
+    <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
+      <attach model="panda" body="link0" prefix="{prefix}"/>
+    </body>
+
+    <!-- Bar wall for robot {i} -->
+    <body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, 0.4, j)}">
+      <geom type="box"
+            size="0.1 1.0 0.8"
+            material="bar_mat"
+            density="2000"
+            contype="1" conaffinity="1"/>
+    </body>
+
+    <!-- Table for robot {i} -->
+    <body name="table{i}" pos="{pos_with_offset(0.8, 0.0, 0.3, j)}">
+      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <!-- Wine bottle for robot {i} -->
+    <body name="wine_bottle_body{i}" pos="{pos_with_offset(0.6, -0.25, 0.80, j)}">
+      <joint name="wine_bottle_free{i}" type="free"/>
+      <geom type="mesh"
+            mesh="wine_bottle_mesh"
+            material="glass_mat"
+            contype="1"
+            density="700"
+            friction="3.0 0.08 0.008"
+            conaffinity="1"/>
+      <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
+    </body>
+
+    <!-- Wine glass for robot {i} -->
+    <body name="Wine_glass{i}" pos="{pos_with_offset(0.6, 0.3, 0.9, j)}" euler="89.55 90 0">
+      <joint name="wine_glass_free{i}" type="free"/>
+      <geom type="mesh"
+            mesh="wine_glass_mesh"
+            material="glass_mat"
+            density="1200"
+            contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
+    </body>
+    
+    <!-- Green square bottle for robot {i} -->
+    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.6, 0.05, 0.79, j)}">
+      <joint name="green_bottle_free{i}" type="free"/>
+    <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <!-- wider base plate to improve stability when placing the bottle down -->
+      <geom name="green_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
+      <geom name="green_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+
+    <!-- Yellow square bottle for robot {i} -->
+    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.6, -0.1, 0.79, j)}">
+      <joint name="yellow_bottle_free{i}" type="free"/>
+            <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <!-- wider base plate to improve stability when placing the bottle down -->
+      <geom name="yellow_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
+      <geom name="yellow_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+            solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+    '''
+
+    xml_content += '''
+
+  </worldbody>
+</mujoco>'''
+
+    return xml_content, robot_ids
+
+
+def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
+    """
+    Generate and save MuJoCo XML file.
+    
+    Args:
+        filename (str): Output filename
+        y_offset (float): Y-axis offset to apply to all objects
+        num_robots (int): Number of robots to create
+        robot_spacing (float): Spacing between robots in Y direction
+    """
+    xml_content, robot_ids = generate_mujoco_xml(y_offset, num_robots, robot_spacing)
+    
+    with open(filename, 'w') as f:
+        f.write(xml_content)
+    
+    return filename, robot_ids
+
+
+
+# Example usage and main function
+if __name__ == "__main__":
+
+    # Example 4: Five robots with tight spacing
+    save_xml_file("/home/adam/Documents/coding/autonomous/xml_robots/panda_scene.xml", y_offset=0.0, num_robots=1, robot_spacing=2.5)
+    
+    # Show layout summary for the multi-robot example
+    

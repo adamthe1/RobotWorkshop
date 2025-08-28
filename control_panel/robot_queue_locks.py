@@ -48,19 +48,40 @@ class QueueServer:
         self.server_socket.listen(5)
         self.running = True
         
-        while self.running:
+        try:
+            self.logger.info(f"Queue server listening on {self.host}:{self.port}")
+            while self.running:
+                try:
+                    client_socket, address = self.server_socket.accept()
+                    client_thread = threading.Thread(
+                        target=self.handle_client, 
+                        args=(client_socket, address),
+                        daemon=True
+                    )
+                    client_thread.start()
+                except OSError:
+                    if self.running:  # Only log if not intentionally stopping
+                        self.logger.error("Server socket error")
+                    break
+        except KeyboardInterrupt:
+            self.logger.info("Queue server interrupted by user (Ctrl+C)")
+        except Exception as e:
+            self.logger.error(f"Queue server error: {e}")
+        finally:
+            self.stop_server()
+    
+    def stop_server(self):
+        """Stop the server."""
+        self.logger.info("Stopping queue server...")
+        self.running = False
+        if self.server_socket:
             try:
-                client_socket, address = self.server_socket.accept()
-                client_thread = threading.Thread(
-                    target=self.handle_client, 
-                    args=(client_socket, address),
-                    daemon=True
-                )
-                client_thread.start()
-            except OSError:
-                if self.running:  # Only log if not intentionally stopping
-                    self.logger.error("Server socket error")
-                break
+                self.server_socket.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing queue server socket: {e}")
+            finally:
+                self.server_socket = None
+        self.logger.info("Queue server stopped")
                 
     def handle_client(self, client_socket, address):
         """Handle client requests with proper message framing."""
@@ -265,13 +286,6 @@ class QueueServer:
                 "robot_locks": dict(self.robot_locks),
                 "free_robots": list(self.free_robot_queue)
             }
-    
-    def stop_server(self):
-        """Stop the server."""
-        self.running = False
-        if self.server_socket:
-            self.server_socket.close()
-        self.logger.info("Queue server stopped")
 
 
 class QueueClient:

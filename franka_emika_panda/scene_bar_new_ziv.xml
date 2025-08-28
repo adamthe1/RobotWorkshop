@@ -10,11 +10,6 @@
   </visual>
 
   <asset>
-    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
-    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
-      markrgb="0.8 0.8 0.8" width="300" height="300"/>
-    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
-
 
     <mesh name="wine_bottle_mesh"
         file="WineBottle.obj"/>
@@ -53,21 +48,6 @@
            height="1000"/>
 
 
-<texture name="wood_tex"
-           type="2d"
-           file="wood3.png"
-           width="20"
-           height="20"/>
-
-  <!-- 2. Create a material that uses that texture -->
-  <material name="wood_floor_mat"
-            texture="wood_tex"
-            texuniform="true"
-            texrepeat="2.5 2.5"
-            reflectance="1"
-            shininess="0"
-            specular="1"/> 
-
 
 
 
@@ -76,12 +56,11 @@
   </asset>
 
   <worldbody>
+   <body name="robot" pos="0 0 0">
+  <attach model="panda" body="link0" prefix=""/>
+</body>
+
     <light pos="0 0 1.5" dir="0 0 -1" directional="true"/>
-    <body name="wood_floor" pos="0 0 0">
-    <geom type="box" size="200  200  0.01"
-          material="wood_floor_mat"
-          contype="0" conaffinity="0"/>
-  </body>
 
   
 
@@ -132,9 +111,7 @@
             contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
 
 </body>
- <body name="r1_frame" pos="0 0 0">
-  <attach model="panda" body="link0" prefix="r1_"/>
-</body>
+
 
 
 

@@ -134,6 +134,7 @@ class MainOrchestrator:
                 self.logger.error(f'Robot ID in mission pair is not the one needed {result}')
                 raise
             packet.mission = result['mission']
+            mission = result['mission']
 
             time.sleep(0.3)
         
@@ -173,14 +174,14 @@ class MainOrchestrator:
                 if tries <= 0:
                     self.logger.error(f"Max retries reached for robot {robot_id}, exiting loop")
                     raise
-                mission_manager.reset_robot_and_mission(robot_id, packet.mission)
+                mission_manager.reset_robot_and_mission(robot_id, mission)
                 self.inference_loop(robot_id, clients, tries)
                 
     def run(self):
         try:
             self.start_servers()
 
-            time.sleep(2)
+            time.sleep(1)
 
             self.robot_list = MujocoClient().recv_robot_list()
             if not self.robot_list:
@@ -215,6 +216,8 @@ class MainOrchestrator:
                 
         except KeyboardInterrupt:
             self.logger.info("Interrupted by user")
+        except Exception as e:
+            self.logger.error(f"Error occurred: {e}")
         finally:
             self.shutdown()
             
@@ -257,7 +260,7 @@ class MainOrchestrator:
             except subprocess.TimeoutExpired:
                 self.logging_process.kill()
 
-        
+        time.sleep(3)
         print("All processes terminated, exiting...")
         sys.exit(0)
 

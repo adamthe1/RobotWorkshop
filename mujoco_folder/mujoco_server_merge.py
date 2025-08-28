@@ -21,28 +21,32 @@ from .packet_example import Packet, RobotListPacket
 
 import mujoco
 import mujoco.viewer
+from .compose_scene import save_xml_file
 from logger_config import get_logger
+import atexit
 
 from dotenv import load_dotenv
 import os
+import random
 
 load_dotenv()
 
 class MuJoCoServer:
-    def __init__(self, xml_path, host=os.getenv("MUJOCO_HOST", "localhost"), port=int(os.getenv("MUJOCO_PORT", 5555)),
-                 render_rgb=True, rgb_width=256, rgb_height=256, no_viewer=False):
+    def __init__(self, xml_path=None, host=os.getenv("MUJOCO_HOST", "localhost"), port=int(os.getenv("MUJOCO_PORT", 5555)),
+                 render_rgb=True, rgb_width=256, rgb_height=256, num_robots=3):
         """
         Initialize MuJoCo server to run physics simulation and communicate
         with a client via TCP sockets.
         Non-server internals are stubbed with dummy values.
         """
-        self.host = host
-        self.port = port
+        self.host = host 
+        self.port = port 
         self.running = True
         self.locker = threading.Lock()
         self.server_socket = None
         self.logger = get_logger('MujocoServer')
-        self.load_scene(xml_path)
+        self.robot_ids = ['r1']
+        self.load_scene(xml_path, num_robots=num_robots)
         
         # Set initial pose (real)
         self.data.qpos[2] = 1.0
@@ -54,13 +58,20 @@ class MuJoCoServer:
         self.rgb_height = rgb_height
         self.viewer     = None
 
-        self.no_viewer = no_viewer
+        self.no_viewer = int(os.getenv("NO_VIEWER", 0)) 
+        self.logger.info(f"MuJoCo server initialized on {self.host}:{self.port} with no_viewer={self.no_viewer}")
+        
 
         # Networking setup
         self.setup_socket()
+        atexit.register(self.cleanup_on_exit)
 
 
-    def load_scene(self,xml_path):
+    def load_scene(self, xml_path, num_robots=3):
+        if os.getenv("USE_DUPLICATING_PATH", "0") == "1":
+            save_xml = os.getenv("MAIN_DIRECTORY") + "/xml_robots/panda_scene.xml"
+            xml_path, robot_ids = save_xml_file(save_xml, num_robots=num_robots)
+            self.robot_ids = robot_ids
         # Load MuJoCo model (real)
         self.logger.info(f"New mujoco, Loading MuJoCo model from: {xml_path}")
         model_path = Path(xml_path)
@@ -88,13 +99,26 @@ class MuJoCoServer:
     def start_viewer(self):
         """Launch MuJoCo passive viewer in background thread"""
         try:
+            if self.viewer is not None:
+                self.viewer.close()
+                self.viewer = None
+                time.sleep(0.1)  # Brief pause for cleanup
+                
             self.logger.info("Launching MuJoCo viewer...")
             self.viewer = mujoco.viewer.launch_passive(self.model, self.data)
             time.sleep(0.5)
             self.logger.info("Viewer initialized successfully")
         except Exception as e:
-            self.logger.warning(f"Failed to initialize viewer: {e}")
+            self.logger.error(f"Failed to initialize viewer: {e}")
             self.viewer = None
+    
+    def cleanup_on_exit(self):
+        """Simple cleanup on exit"""
+        if self.viewer:
+            try:
+                self.viewer.close()
+            except:
+                pass
 
     def fill_robot_list(self, packet):
         """
@@ -106,7 +130,7 @@ class MuJoCoServer:
 
     def get_robot_list(self):
         """Return a list of robot IDs (stubbed)"""
-        return ['r1']
+        return self.robot_ids
 
     def step_once(self):
         """Advance the physics by one timestep"""
@@ -165,7 +189,6 @@ class MuJoCoServer:
                     break
                 elif pkt.action is not None:
                     reply = self.robot_control.apply_commands(pkt)
-                    self.step_once()
                 else:
                     reply = self.robot_control.fill_packet(pkt)
                 self._send_packet(reply, client_socket)  # Pass socket
@@ -178,12 +201,12 @@ class MuJoCoServer:
     def simulation_thread(self, control_hz=60):
         dt = 1.0 / control_hz
         next_time = time.time()
+        self.update_actuator_targets()
         while self.running:
             # 1) apply whatever the last action was   #TODO
             
             # 2) step the muJoCo sim
             with self.locker:
-                self.update_actuator_targets()
                 mujoco.mj_step(self.model, self.data)
 
             # 3) redraw viewer (passive or active)
@@ -195,22 +218,32 @@ class MuJoCoServer:
             time.sleep(max(0, next_time - time.time()))
 
     def run(self):
-        """Start viewer thread, accept one client, and dispatch"""
-        if not self.no_viewer:
-            t = threading.Thread(target=self.start_viewer, daemon=True)
-            t.start()
+        """Start viewer thread, clients, and dispatch"""
+        try:
+            self.logger.info(f"With viewer: {not self.no_viewer}")
+            if self.no_viewer == 0:
+                t = threading.Thread(target=self.start_viewer, daemon=True)
+                t.start()
 
-        sim_t = threading.Thread(target=self.simulation_thread, daemon=True)
-        sim_t.start()
+            sim_t = threading.Thread(target=self.simulation_thread, daemon=True)
+            sim_t.start()
 
-        while True:
-            client, addr = self.server_socket.accept()
-            t = threading.Thread(
-                target=self.handle_client,
-                args=(client, addr),
-                daemon=True
-            )
-            t.start()
+            self.logger.info(f"Server listening on {self.host}:{self.port}")
+            while True:
+                client, addr = self.server_socket.accept()
+                t = threading.Thread(
+                    target=self.handle_client,
+                    args=(client, addr),
+                    daemon=True
+                )
+                t.start()
+                
+        except KeyboardInterrupt:
+            self.logger.info("Server interrupted by user (Ctrl+C)")
+        except Exception as e:
+            self.logger.error(f"Server error: {e}")
+        finally:
+            self.close()
 
     def close(self):
         """Cleanup sockets and viewer"""
@@ -310,7 +343,5 @@ class MujocoClient:
 
 
 if __name__ == '__main__':
-    model_path = find_model_path()
-    
-    server = MuJoCoServer(model_path, no_viewer=False)
+    server = MuJoCoServer(xml_path=find_model_path(), num_robots=1)
     server.run()

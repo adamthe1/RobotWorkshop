@@ -42,16 +42,28 @@ class LoggingServer:
     def __init__(self):
         self.host = os.getenv('LOGGING_HOST', 'localhost')
         self.port = int(os.getenv('LOGGING_PORT', 9020))
+        
         self.server = None
+        self.running = True
         self.setup_file_logging()
         signal.signal(signal.SIGTERM, self._signal_handler)
         signal.signal(signal.SIGINT, self._signal_handler)
         
     def _signal_handler(self, signum, frame):
+        print(f"Logging server received signal {signum}, shutting down...")
+        self.shutdown()
+
+    def shutdown(self):
+        """Clean shutdown of the logging server"""
+        self.running = False
         if self.server:
-            self.server.shutdown()
+            try:
+                self.server.shutdown()
+                self.server.server_close()
+            except Exception as e:
+                print(f"Error shutting down logging server: {e}")
         sys.exit(0)
-        
+
     def setup_file_logging(self):
         # Create logs directory
         os.makedirs('logs', exist_ok=True)
@@ -80,13 +92,19 @@ class LoggingServer:
             root_logger.addHandler(h)
         
     def start(self):
-        print(f"Starting logging server on {self.host}:{self.port}")
-
-        self.server = socketserver.ThreadingTCPServer(
-            (self.host, self.port), 
-            LogRecordStreamHandler
-        )
-        self.server.serve_forever()
+        try:
+            print(f"Starting logging server on {self.host}:{self.port}")
+            self.server = socketserver.ThreadingTCPServer(
+                (self.host, self.port), 
+                LogRecordStreamHandler
+            )
+            self.server.serve_forever()
+        except KeyboardInterrupt:
+            print("Logging server interrupted by user (Ctrl+C)")
+        except Exception as e:
+            print(f"Logging server error: {e}")
+        finally:
+            self.shutdown()
 
 class GlobalLogger:
     _instance = None

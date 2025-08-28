@@ -25,7 +25,7 @@ class PhysicsStateExtractor:
         joints = self.embodiment_manager.get_robot_joint_list(robot_id)
         for j in joints:
             logger.debug("Extracting joint %s", j)
-            jname = robot_id + "_" + str(j)
+            jname = str(j)
             logger.debug("Extracting joint %s for robot %s", jname, robot_id)
  
             # get joint id from name

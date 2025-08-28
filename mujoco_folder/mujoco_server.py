@@ -13,6 +13,7 @@ import threading
 import numpy as np
 from pathlib import Path
 from .packet_example import Packet, RobotListPacket
+import glfw
 
 import mujoco
 import mujoco.viewer
@@ -83,7 +84,7 @@ class MuJoCoServer:
 
 
 
-    def start_viewer(self):
+    def start_viewer(self, retries=3):
         """Launch MuJoCo passive viewer in background thread"""
         try:
             self.logger.info("Launching MuJoCo viewer...")
@@ -92,6 +93,11 @@ class MuJoCoServer:
             self.logger.info("Viewer initialized successfully")
         except Exception as e:
             self.logger.warning(f"Failed to initialize viewer: {e}")
+            if retries > 0:
+                self.logger.info("Retrying viewer initialization...")
+                retries -= 1
+                time.sleep(1)
+                self.start_viewer(retries=retries)
             self.viewer = None
 
     def fill_robot_list(self, packet):
