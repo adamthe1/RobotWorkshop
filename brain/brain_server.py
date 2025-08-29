@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class BrainServer:
-    def __init__(self, host=os.getenv("BRAIN_HOST", "localhost"), port=int(os.getenv("BRAIN_PORT", 8900))):
+    def __init__(self, host=os.getenv("BRAIN_HOST", "localhost"), port=int(os.getenv("BRAIN_PORT", 8900)), use_test_mapper=True):
         """
         Initialize Brain server for policy inference and action generation.
         """
@@ -29,16 +29,29 @@ class BrainServer:
         self.server_socket = None
         self.logger = get_logger('BrainServer')
         
-        # Optional episode replay mapper
+        # Optional episode replay mapper or joint test mapper
         self.mapper = None
-        replay_path = os.getenv("REPLAY_EPISODE_PATH")
-        if replay_path:
+        
+        if use_test_mapper:
             try:
-                from .episode_action_mapper import EpisodeActionMapper
-                self.mapper = EpisodeActionMapper(replay_path)
-                self.logger.info(f"EpisodeActionMapper loaded from {replay_path}")
+                from .joint_test_mapper import JointTestMapper
+                self.mapper = JointTestMapper(
+                    num_joints=7,  # Default, will auto-adjust based on robot
+                    test_amplitude=1.5,
+                    loop=True
+                )
+                self.logger.info("JointTestMapper loaded for comprehensive joint testing")
             except Exception as e:
-                self.logger.error(f"Failed to load EpisodeActionMapper: {e}")
+                self.logger.error(f"Failed to load JointTestMapper: {e}")
+        else:
+            replay_path = os.getenv("REPLAY_EPISODE_PATH")
+            if replay_path:
+                try:
+                    from .episode_action_mapper import EpisodeActionMapper
+                    self.mapper = EpisodeActionMapper(replay_path)
+                    self.logger.info(f"EpisodeActionMapper loaded from {replay_path}")
+                except Exception as e:
+                    self.logger.error(f"Failed to load EpisodeActionMapper: {e}")
 
         # Setup networking
         self.setup_socket()

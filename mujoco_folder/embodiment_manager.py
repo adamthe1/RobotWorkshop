@@ -5,7 +5,7 @@ logger = get_logger("EmbodimentManager")
 class EmbodimentManager:
     def __init__(self, model):
         self.model = model
-        self.robot_type_mapper = {'r1': 'FrankaPanda', 'r2': 'FrankaPanda', "r3": 'FrankaPanda'}
+        self.robot_type_mapper = {'r1': 'FrankaPanda', 'r2': 'FrankaPanda', "r3": 'FrankaPanda', "r4": 'FrankaPanda', "r5": 'FrankaPanda'}
         self.robot_joint_mapper = {
             'FrankaPanda': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'],
             }

@@ -35,7 +35,7 @@ class MissionStatus:
         if self.vision_model is None:
             if packet.submission in self.submission_counter:
                 self.submission_counter[packet.submission] += 1
-                if self.submission_counter[packet.submission] > 10:
+                if self.submission_counter[packet.submission] > 500:
                     self.logger.debug(f"Submission {packet.submission} has been repeated more than 10 times, go to next.")
                     return {'subtask': packet.submission, 'done': True}
             else:

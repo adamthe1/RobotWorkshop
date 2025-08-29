@@ -431,5 +431,5 @@ class MujocoClient:
 
 
 if __name__ == '__main__':
-    server = MuJoCoServer(xml_path=find_model_path(), num_robots=3)
+    server = MuJoCoServer(xml_path=find_model_path(), num_robots=5)
     server.run()
