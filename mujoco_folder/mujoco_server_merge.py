@@ -55,6 +55,11 @@ class MuJoCoServer:
             self.data.qpos[2] = 1.0
             mujoco.mj_forward(self.model, self.data)
         
+        # Initialize action cache with current control values to prevent robots from falling
+        # This must happen after any state loading to capture the correct initial positions
+        self.robot_control.initialize_action_cache_from_current_state()
+        self.logger.info("Action cache initialized with current robot positions")
+        
         # Viewer settings
         self.render_rgb = render_rgb
         self.rgb_width  = rgb_width
@@ -232,19 +237,6 @@ class MuJoCoServer:
             with self.locker:
                 self.viewer.sync()
 
-    def update_actuator_targets(self):
-        """Update actuator control targets to current joint positions"""
-        for i in range(self.model.nu):
-            # Get the joint associated with this actuator
-            joint_id = self.model.actuator_trnid[i, 0]
-            if joint_id >= 0 and joint_id < self.model.njnt:
-                # Set control target to current joint position
-                current_pos = self.data.qpos[self.model.jnt_qposadr[joint_id]]
-                self.data.ctrl[i] = current_pos
-
-
-
-
     def _recv_packet(self, client_socket):  # Add socket parameter
         """Receive a length‑prefixed pickled packet"""
         size_data = client_socket.recv(4)  # Use parameter instead of self.client_socket
@@ -292,17 +284,24 @@ class MuJoCoServer:
         dt = 1.0 / control_hz
         next_time = time.time()
         
+        # Enable action repeat mode for gravity compensation
+        self.robot_control.set_action_repeat_mode(True)
+        
         while self.running:
-            # 1) apply whatever the last action was   #TODO
-            
-            # 2) step the muJoCo sim
             with self.locker:
-                self.update_actuator_targets()
+                # 1) Commit staged actions to data before stepping
+                actions_applied = self.robot_control.commit_staged_actions()
+                
+                # 2) Step the MuJoCo simulation
                 mujoco.mj_step(self.model, self.data)
+                
+                # 3) Update snapshot after stepping (critical: while still holding lock)
+                self.robot_control.update_snapshot()
 
-            # 3) viewer renders from its own thread that owns the GL context
+            # 4) Viewer renders from its own thread that owns the GL context
+            # (no changes needed here)
 
-            # 4) sleep until next frame
+            # 5) Sleep until next frame
             next_time += dt
             time.sleep(max(0, next_time - time.time()))
 
@@ -427,7 +426,7 @@ class MujocoClient:
         self.connect()
         return self
     
-    def __exit__(self, exc_type, exc_val, exc_tb):  # Fixed: Added missing parameters
+    def __exit__(self, *args):
         self.close()
 
 
