@@ -34,9 +34,11 @@ class PhysicsStateExtractor:
                 logger.debug("Joint name not found: %s (falling back to j as index)", jname)
                 joint_id = int(j)  # fallback if j already was index
 
-            addr = int(self.model.jnt_qposadr[joint_id])
-            qpos_list.append(float(self.data.qpos[addr]))
-            qvel_list.append(float(self.data.qvel[addr]))
+            qpos_addr = int(self.model.jnt_qposadr[joint_id])
+            qvel_addr = int(self.model.jnt_dofadr[joint_id])
+
+            qpos_list.append(float(self.data.qpos[qpos_addr]))
+            qvel_list.append(float(self.data.qvel[qvel_addr]))
             joint_names.append(jname)
 
         return {

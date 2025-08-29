@@ -9,3 +9,4 @@ datasets/
 */.venv/
 MUJOCO_LOG.TXT
 AGENTS.md
+CLAUDE.md

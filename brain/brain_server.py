@@ -29,6 +29,17 @@ class BrainServer:
         self.server_socket = None
         self.logger = get_logger('BrainServer')
         
+        # Optional episode replay mapper
+        self.mapper = None
+        replay_path = os.getenv("REPLAY_EPISODE_PATH")
+        if replay_path:
+            try:
+                from .episode_action_mapper import EpisodeActionMapper
+                self.mapper = EpisodeActionMapper(replay_path)
+                self.logger.info(f"EpisodeActionMapper loaded from {replay_path}")
+            except Exception as e:
+                self.logger.error(f"Failed to load EpisodeActionMapper: {e}")
+
         # Setup networking
         self.setup_socket()
         self.logger.info("Brain server initialized")
@@ -50,22 +61,35 @@ class BrainServer:
         robot_id = packet.robot_id
         mission = packet.mission
         
-        # Stub: Generate dummy action based on robot state
-        # In real implementation, this would use your trained policy
-        if hasattr(packet, 'qpos') and packet.qpos is not None:
-            action_dim = len(packet.qpos)
+        # If mapper loaded, replay action from episode; else generate dummy
+        if self.mapper is not None:
+            try:
+                action = self.mapper.next_action(
+                    robot_id=str(robot_id),
+                    joint_names=getattr(packet, 'joint_names', None),
+                    qpos=getattr(packet, 'qpos', None),
+                    qvel=getattr(packet, 'qvel', None),
+                )
+            except Exception as e:
+                self.logger.error(f"Mapper failed, falling back to dummy: {e}")
+                action = None
         else:
-            action_dim = 7  # Default for 7-DOF robot arm
-            
-        # Generate dummy action (replace with actual policy inference)
-        dummy_action = np.random.uniform(-0.1, 0.1, action_dim).tolist()
+            action = None
+
+        if action is None:
+            # Fallback: dummy small random action with plausible dim
+            if hasattr(packet, 'qpos') and packet.qpos is not None:
+                action_dim = len(packet.qpos)
+            else:
+                action_dim = 7
+            action = np.random.uniform(-0.1, 0.1, action_dim).tolist()
         
         # Log what we're doing
         self.logger.debug(f"Generating action for robot {robot_id}, mission: {mission}")
-        self.logger.debug(f"Action: {dummy_action}")
+        self.logger.debug(f"Action: {action}")
         
         # Fill the action in the packet
-        packet.action = dummy_action
+        packet.action = action
         time_taken = time.time() - time_now
         self.logger.debug(f"Action generated for robot {robot_id} in {time_taken:.2f} seconds")
         

@@ -119,6 +119,15 @@ class MainOrchestrator:
                     time.sleep(1)
                 else:
                     raise
+    
+    def clean_packet(self, packet):
+        packet.action = None
+        packet.qpos = None
+        packet.qvel = None
+        packet.joint_names = None
+        packet.wall_camera = None
+        packet.wrist_camera = None
+        return packet
 
     def inference_loop(self, robot_id, clients, tries=3):
         self.logger.info("Starting inference loop for robot: %s", robot_id)
@@ -138,10 +147,11 @@ class MainOrchestrator:
 
             time.sleep(0.3)
         
-        self.logger.info(f"Robot {robot_id} assigned mission: {packet.mission}")
+        self.logger.info(f"Robot {robot_id} assigned mission: {packet}")
 
         while self.running:
             try:
+                packet = self.clean_packet(packet)
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
                 packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Received robot state: {packet.qpos}")
@@ -158,11 +168,11 @@ class MainOrchestrator:
                     self.inference_loop(robot_id, clients)
                 
                 # Step 4: Send to Brain, get action
-                #packet = brain_client.send_and_recv(packet)
-                self.logger.debug(f"{robot_id} Received action from Brain")
+                packet = brain_client.send_and_recv(packet)
+                self.logger.debug(f"{robot_id} Received action from Brain {packet}")
 
-                #packet = mujoco_client.send_and_recv(packet)
-                #self.logger.debug(f"{robot_id}Action sent, result: {packet.action}")
+                packet = mujoco_client.send_and_recv(packet)
+                self.logger.debug(f"{robot_id}Action sent, result: {packet}")
 
                 time.sleep(0.1)
                 
@@ -173,7 +183,7 @@ class MainOrchestrator:
                 tries -= 1
                 if tries <= 0:
                     self.logger.error(f"Max retries reached for robot {robot_id}, exiting loop")
-                    raise
+                    self.shutdown()
                 mission_manager.reset_robot_and_mission(robot_id, mission)
                 self.inference_loop(robot_id, clients, tries)
                 

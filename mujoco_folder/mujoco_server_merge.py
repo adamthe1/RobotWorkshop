@@ -277,7 +277,8 @@ class MuJoCoServer:
                 elif pkt is None:
                     break
                 elif pkt.action is not None:
-                    reply = self.robot_control.apply_commands(pkt)
+                    self.robot_control.apply_commands(pkt)
+                    reply = pkt
                 else:
                     reply = self.robot_control.fill_packet(pkt)
                 self._send_packet(reply, client_socket)  # Pass socket
@@ -290,12 +291,13 @@ class MuJoCoServer:
     def simulation_thread(self, control_hz=60):
         dt = 1.0 / control_hz
         next_time = time.time()
-        self.update_actuator_targets()
+        
         while self.running:
             # 1) apply whatever the last action was   #TODO
             
             # 2) step the muJoCo sim
             with self.locker:
+                self.update_actuator_targets()
                 mujoco.mj_step(self.model, self.data)
 
             # 3) viewer renders from its own thread that owns the GL context
