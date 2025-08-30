@@ -5,7 +5,7 @@ A multi-robot simulation and control system built with MuJoCo, supporting teleop
 ## Quick Start
 
 1. **Activate virtual environment** and install requirements
-2. **Set up environment variables** (see Configuration below)
+2. **Set up environment variables** (copy .exampleenv -> .env and add api-key, maindir)
 3. **Run simulation**: `python3 -m main_run`
 4. **Record teleoperation data**: `python3 finetuning/control_robot_solid.py`
 
