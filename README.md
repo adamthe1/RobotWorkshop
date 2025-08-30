@@ -8,23 +8,20 @@ Run python3 -m main_run
 # env required
 
 VISION_WEIGHTS_PATH = '/path/to/your/weights.pth'
-MISSION_QUEUE_SIZE = 6  # Example size, adjust as needed
+MISSION_QUEUE_SIZE = 6 
 
 MUJOCO_HOST = 'localhost'
-MUJOCO_PORT = 8600  # Default port for MuJoCo server
+MUJOCO_PORT = 8600 
 USE_GPU_WSL = 1
 
 MAIN_DIRECTORY = "path/main"
-USE_DUPLICATING_PATH = 1 # if to use the new duplicating mujoco
+USE_DUPLICATING_PATH = 1 
 MUJOCO_MODEL_PATH = ${MAIN_DIRECTORY}/franka_emika_panda/scene_bar_new_ziv.xml
 CONTROL_ROBOT_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene.xml
 LOAD_SAVED_STATE = 1
-# franka_emika_panda/scene_bar_new_ziv.xml
 
-# Robot configuration
 FRANKA_PANDA_COUNT = 1
 SO101_COUNT = 2
-
 
 QUEUE_HOST = 'localhost'
 QUEUE_PORT = 8700
