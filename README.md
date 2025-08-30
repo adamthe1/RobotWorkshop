@@ -12,6 +12,7 @@ MISSION_QUEUE_SIZE = 6  # Example size, adjust as needed
 
 MUJOCO_HOST = 'localhost'
 MUJOCO_PORT = 8600  # Default port for MuJoCo server
+USE_GPU_WSL = 1
 
 MAIN_DIRECTORY = "path/main"
 USE_DUPLICATING_PATH = 1 # if to use the new duplicating mujoco
@@ -21,8 +22,8 @@ LOAD_SAVED_STATE = 1
 # franka_emika_panda/scene_bar_new_ziv.xml
 
 # Robot configuration
-FRANKA_PANDA_COUNT = 4
-SO101_COUNT = 0
+FRANKA_PANDA_COUNT = 1
+SO101_COUNT = 2
 
 
 QUEUE_HOST = 'localhost'

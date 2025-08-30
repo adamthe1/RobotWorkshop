@@ -45,6 +45,13 @@ class MuJoCoServer:
         self.locker = threading.Lock()
         self.server_socket = None
         self.logger = get_logger('MujocoServer')
+
+        if os.getenv('USE_GPU_WSL', '0') == '1':
+            os.environ['MUJOCO_GL'] = 'egl'
+            self.logger.info("Using GPU rendering (EGL)")
+        else:
+            self.logger.info("Using CPU rendering (OSMesa)")
+
         self.robot_ids = ['r1']
         self.robot_dict = {"r1": "FrankaPanda"}
         self.load_scene(xml_path, num_robots=num_robots)
