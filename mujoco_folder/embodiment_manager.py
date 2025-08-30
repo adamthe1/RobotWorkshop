@@ -31,8 +31,8 @@ class EmbodimentManager:
         
         # Gripper joint mappings
         self.robot_gripper_mapper = {
-            'FrankaPanda': ['finger_joint1', 'finger_joint2'],
-            'SO101': ['gripper']
+            'FrankaPanda': 'actuator8',
+            'SO101': 'gripper'
         }
         
         self.add_prefix_bool = True
@@ -79,11 +79,11 @@ class EmbodimentManager:
         # Get the list of gripper joints for a specific robot
         robot_type = self.robot_id2robot_model(robot_id)
 
-        gripper_joints = self.robot_gripper_mapper.get(robot_type, [])
-        gripper_joints = self.add_prefix(robot_id, gripper_joints)
-        if len(gripper_joints) == 0:
+        gripper_joint = self.robot_gripper_mapper.get(robot_type, '')
+        gripper_joint = self.add_prefix(robot_id, [gripper_joint])[0]
+        if len(gripper_joint) == 0:
             self.logger.warning(f"No gripper joints found for robot type: {robot_type}")
-        return gripper_joints
+        return gripper_joint
     
     def add_prefix(self, robot_id, name_list):
         if self.add_prefix_bool:

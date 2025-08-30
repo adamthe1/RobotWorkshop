@@ -23,7 +23,7 @@ class EpisodeActionMapper:
     This class is intentionally simple and deterministic to be safe.
     """
 
-    def __init__(self, parquet_path: str, loop: bool = True):
+    def __init__(self, parquet_path: str, loop: bool = True, slicing: int = 4):
         p = Path(parquet_path)
         if not p.exists():
             raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
@@ -32,6 +32,8 @@ class EpisodeActionMapper:
             raise ValueError("Parquet missing 'action' column")
         # Normalize actions to np.ndarray of shape (T, A)
         actions = self.df['action'].tolist()
+        if slicing > 1:
+            actions = actions[::slicing]
         try:
             self.actions = np.asarray(actions, dtype=object)
         except Exception:
@@ -39,30 +41,29 @@ class EpisodeActionMapper:
             self.actions = actions
         self.T = len(self.actions)
         self.loop = loop
-        # Maintain independent cursors per robot
-        self.cursors: Dict[str, int] = {}
+        # Use single cursor for robot ID agnostic replay
+        self.cursor = 0
+        print(f"[EpisodeActionMapper] Loaded {self.T} actions, robot ID agnostic mode")
 
     def reset(self, robot_id: Optional[str] = None):
-        if robot_id is None:
-            self.cursors = {}
-        else:
-            self.cursors.pop(robot_id, None)
+        """Reset cursor to beginning - robot_id parameter ignored for compatibility"""
+        self.cursor = 0
 
     def next_action(self, robot_id: str, joint_names: Optional[List[str]] = None,
                     qpos: Optional[List[float]] = None, qvel: Optional[List[float]] = None) -> List[float]:
         """
-        Return the next action for the given robot.
-
+        Return the next action - robot_id parameter ignored for compatibility.
+        
         For now this replays sequentially. It does not yet align by state/timestamp,
         but that can be added (e.g., nearest-neighbor on state or by stored timestamps).
         """
-        idx = self.cursors.get(robot_id, 0)
+        idx = self.cursor
         if idx >= self.T:
             if self.loop and self.T > 0:
                 idx = 0
+                self.cursor = 0
             else:
                 # No more actions; return zeros with appropriate length if possible
-                self.cursors[robot_id] = idx
                 length = len(self.actions[0]) if self.T > 0 else 0
                 return [0.0] * length
 
@@ -74,6 +75,6 @@ class EpisodeActionMapper:
             act_out = [float(x) for x in act]
 
         # Advance cursor
-        self.cursors[robot_id] = idx + 1
+        self.cursor = idx + 1
         return act_out
 

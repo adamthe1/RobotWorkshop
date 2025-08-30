@@ -20,13 +20,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class BrainServer:
-    def __init__(self, host=os.getenv("BRAIN_HOST", "localhost"), port=int(os.getenv("BRAIN_PORT", 8900)), use_test_mapper=True):
+    def __init__(self, host=os.getenv("BRAIN_HOST", "localhost"), port=int(os.getenv("BRAIN_PORT", 8900)), use_test_mapper=False):
         """
         Initialize Brain server for policy inference and action generation.
         """
         self.host = host
         self.port = port
-        self.running = True
+        self.running = False
         self.server_socket = None
         self.logger = get_logger('BrainServer')
         
@@ -56,36 +56,6 @@ class BrainServer:
                     self.logger.error(f"Failed to load EpisodeActionMapper: {e}")
 
         # Setup networking
-        self.setup_socket()
-        self.logger.info("Brain server initialized")
-        signal.signal(signal.SIGTERM, self._signal_handler)
-        signal.signal(signal.SIGINT, self._signal_handler)
-        
-    def _signal_handler(self, signum, frame):
-        print(f"Logging server received signal {signum}, shutting down...")
-        self.shutdown()
-
-    def shutdown(self):
-        """Clean shutdown of the brain server"""
-        self.logger.info("Stopping brain server...")
-        self.running = False
-        if self.server_socket:
-            try:
-                self.server_socket.close()
-            except Exception as e:
-                self.logger.warning(f"Error closing brain server socket: {e}")
-            finally:
-                self.server_socket = None
-        self.logger.info("Brain server stopped")
-        sys.exit(0)
-
-    def setup_socket(self):
-        """Set up the TCP server socket"""
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(10)
-        self.logger.info(f"Brain server listening on {self.host}:{self.port}")
 
     def fill_action(self, packet):
         """
@@ -105,6 +75,7 @@ class BrainServer:
                     qpos=getattr(packet, 'qpos', None),
                     qvel=getattr(packet, 'qvel', None),
                 )
+                
             except Exception as e:
                 self.logger.error(f"Mapper failed, falling back to dummy: {e}")
                 action = None
@@ -171,20 +142,46 @@ class BrainServer:
             client_socket.close()
             self.logger.info(f"Brain client {addr} disconnected")
 
+    def setup_socket(self):
+        """Set up the TCP server socket"""
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind((self.host, self.port))
+            self.server_socket.listen(5)
+            self.logger.info(f"Brain server listening on {self.host}:{self.port}")
+        except OSError as e:
+            if "Address already in use" in str(e):
+                import subprocess
+                result = subprocess.run(['lsof', '-ti', f':{self.port}'], capture_output=True, text=True)
+                if result.stdout.strip():
+                    pid = result.stdout.strip()
+                    self.logger.warning(f"Port {self.port} in use by process {pid}, killing it...")
+                    subprocess.run(['kill', '-9', pid])
+                    time.sleep(0.5)  # Brief pause
+                    self.setup_socket()  # Retry
+                else:
+                    raise
+            else:
+                raise
+        
     def run(self):
         """Start accepting clients"""
         self.logger.info("Brain server starting...")
+        self.setup_socket()
+        self.running = True
         
         try:
             while self.running:
                 try:
                     client, addr = self.server_socket.accept()
-                    t = threading.Thread(
+                    client_thread = threading.Thread(
                         target=self.handle_client,
                         args=(client, addr),
                         daemon=True
                     )
-                    t.start()
+                    client_thread.start()
+                    self.logger.info("Brain server initialized")
                 except OSError:
                     if self.running:  # Only log if not intentionally stopping
                         self.logger.error("Brain server socket error")
@@ -195,6 +192,19 @@ class BrainServer:
             self.logger.error(f"Brain server error: {e}")
         finally:
             self.shutdown()
+
+    def shutdown(self):
+        """Clean shutdown of the brain server"""
+        self.logger.info("Stopping brain server...")
+        self.running = False
+        if self.server_socket:
+            try:
+                self.server_socket.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing brain server socket: {e}")
+            finally:
+                self.server_socket = None
+        self.logger.info("Brain server stopped")
 
     def close(self):
         """Cleanup server socket (called by shutdown)"""
@@ -265,8 +275,4 @@ class BrainClient:
 
 if __name__ == '__main__':
     server = BrainServer()
-    try:
-        server.run()
-    except KeyboardInterrupt:
-        print("\nShutting down brain server...")
-        server.close()
+    server.run()

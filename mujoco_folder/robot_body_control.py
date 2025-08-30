@@ -20,6 +20,7 @@ class MuJoCoSnapshot:
         self.qpos = data.qpos.copy()
         self.qvel = data.qvel.copy() 
         self.ctrl = data.ctrl.copy()
+        self.actuator_ctrlrange = model.actuator_ctrlrange.copy()
         self.time = float(data.time)
         
         # Copy contact and force data
@@ -102,8 +103,10 @@ class RobotBodyControl:
         # Legacy components (will be updated to use snapshots)
         self.embodiment_manager = EmbodimentManager(model, robot_dict=robot_dict)
         self.physics_extractor = PhysicsStateExtractor(model, data)
-        self.action_manager = ActionManager(model, data)
-        self.camera = None
+        self.action_manager = ActionManager()
+
+                # Initialize camera renderer (no direct data access)
+        self.camera_renderer = CameraRenderer(model)
         
 
         # Create initial snapshot
@@ -115,6 +118,9 @@ class RobotBodyControl:
             self._current_snapshot = MuJoCoSnapshot(self.model, self.data)
             self._current_snapshot.version = self._snapshot_version
             self._snapshot_version += 1
+
+             # Update camera renderer with new snapshot
+            self.camera_renderer.update_snapshot(self._current_snapshot)
     
     def get_snapshot(self):
         """Get the current immutable snapshot (thread-safe for consumers)"""
@@ -176,49 +182,41 @@ class RobotBodyControl:
         robot_id = str(packet.robot_id)
         # Retrieve the ordered actuator name list for this robot
         actuator_names = self.embodiment_manager.get_robot_actuator_list(robot_id)
+        gripper_name = self.embodiment_manager.get_robot_gripper_joints(robot_id)
+
         if not actuator_names:
             raise ValueError(f"No actuators found for robot_id={robot_id}")
-
-        # Map names to actuator indices in the model, preserving order
-        indices = []
+        
+        actuator_indices = []
         resolved_names = []
         for name in actuator_names:
             aid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
             if aid >= 0:
-                indices.append(aid)
+                actuator_indices.append(aid)
                 resolved_names.append(name)
-        if not indices:
-            raise ValueError(f"Actuator names not found in model for robot_id={robot_id}: {actuator_names}")
 
-        # Align action length to indices length
-        if len(joint_targets) < len(indices):
-            # Get current control values from snapshot for padding
-            snapshot = self.get_snapshot()
-            if snapshot:
-                padded = list(joint_targets) + [float(snapshot.ctrl[i]) for i in indices[len(joint_targets):]]
-            else:
-                # Fallback to zeros if no snapshot available
-                padded = list(joint_targets) + [0.0] * (len(indices) - len(joint_targets))
-            joint_targets = padded
-        elif len(joint_targets) > len(indices):
-            # Truncate extras
-            joint_targets = joint_targets[:len(indices)]
+        gripper_index = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, gripper_name)
+        if gripper_index < 0:
+            raise ValueError(f"Gripper actuator not found for robot_id={robot_id}: {gripper_name}")
 
-        # Debug sample
-        sample_n = min(4, len(indices))
-        logger.debug(f"Staging {len(indices)} actuator targets for {robot_id}: "
-                     f"{[(resolved_names[i], float(joint_targets[i])) for i in range(sample_n)]} ...")
+        snapshot = self.get_snapshot()
+
+        actuator_indices, joint_targets = self.action_manager.prepare_joint_targets(snapshot, actuator_indices, gripper_index, joint_targets)
+           # Debug sample
+        sample_n = min(14, len(actuator_indices))
+        logger.debug(f"Staging {len(actuator_indices)} actuator targets for {robot_id}: "
+                     f"{[float(joint_targets[i]) for i in range(sample_n)]} ...")
 
         # Stage the actions (thread-safe)
-        self.action_staging.stage_action(indices, joint_targets)
-        
+        self.action_staging.stage_action(actuator_indices, joint_targets)
+
         # Fill and return updated packet so caller can see post-apply state
         packet = self.fill_packet(packet)
         return packet
 
 
 
-    def fill_packet(self, packet):
+    def fill_packet(self, packet, no_camera=False):
         """Fill packet with improved error handling using snapshot data"""
         logger.debug(f"[fill_packet] Called with robot_id = {packet.robot_id}")
         
@@ -242,31 +240,13 @@ class RobotBodyControl:
             # Note: Camera rendering is read-only and uses MuJoCo's render APIs
             # which require direct model/data access. This is safe as long as
             # rendering doesn't modify the simulation state.
-            imgs_dict = {}
-            camera_renderer = self._get_camera_renderer()
-            
-            if camera_renderer:
-                camera_list = self.embodiment_manager.get_robot_camera_list(robot_id)
-                logger.debug(f"[fill_packet] Getting images for cameras: {camera_list}")
-                
-                for camera_name in camera_list:
-                    try:
-                        if camera_renderer.set_camera(camera_name):
-                            img = camera_renderer.get_rgb_image()
-                            if img is not None:
-                                imgs_dict[camera_name] = img
-                                logger.debug(f"[fill_packet] Got image for {camera_name}")
-                            else:
-                                logger.warning(f"[fill_packet] Failed to get image for {camera_name}")
-                        else:
-                            logger.warning(f"[fill_packet] Failed to set camera {camera_name}")
-                    except Exception as e:
-                        logger.error(f"[fill_packet] Error with camera {camera_name}: {e}")
+            # Get camera images using safe snapshot-based rendering
+            if not no_camera:
+                imgs_dict = self._get_robot_camera_images(robot_id)
+                packet.images = imgs_dict
+                logger.debug(f"[fill_packet] Packet filled with {len(imgs_dict)} images")
             else:
-                logger.warning("[fill_packet] Camera renderer not available")
-            
-            packet.images = imgs_dict
-            logger.debug(f"[fill_packet] Packet filled with {len(imgs_dict)} images")
+                packet.images = {}
             
         except Exception as e:
             logger.error(f"[fill_packet] ERROR: {e}")
@@ -275,3 +255,54 @@ class RobotBodyControl:
                 packet.images = {}
         
         return packet
+    
+
+    def _get_robot_camera_images(self, robot_id):
+        """
+        Get camera images for a specific robot using snapshot-based rendering.
+        Thread-safe and doesn't touch model/data directly.
+        """
+        try:
+            # Get camera list from embodiment manager
+            camera_list = self.embodiment_manager.get_robot_camera_list(robot_id)
+            if not camera_list:
+                logger.warning(f"No cameras defined for robot {robot_id}")
+                return {}
+            
+            logger.debug(f"Getting images for robot {robot_id} cameras: {camera_list}")
+            
+            # Validate camera names
+            valid_cameras, invalid_cameras = self.camera_renderer.validate_camera_names(camera_list)
+            
+            if invalid_cameras:
+                available = self.camera_renderer.get_available_camera_list()
+                logger.warning(f"Invalid cameras for robot {robot_id}: {invalid_cameras} Available cameras: {available}")
+
+            if not valid_cameras:
+                logger.warning(f"No valid cameras found for robot {robot_id}")
+                return {}
+            
+            # Get images using snapshot-based rendering
+            images = self.camera_renderer.get_camera_images(valid_cameras)
+            
+            # Filter out None values and log results
+            valid_images = {name: img for name, img in images.items() if img is not None}
+            failed_cameras = [name for name, img in images.items() if img is None]
+            
+            if failed_cameras:
+                logger.warning(f"Failed to render cameras for robot {robot_id}: {failed_cameras}")
+            
+            logger.debug(f"Successfully got {len(valid_images)} images for robot {robot_id}")
+            return valid_images
+            
+        except Exception as e:
+            logger.error(f"Error getting camera images for robot {robot_id}: {e}")
+            return {}
+
+    def cleanup(self):
+        """Clean up all resources"""
+        try:
+            self.camera_renderer.cleanup()
+            logger.info("RobotBodyControl cleaned up")
+        except Exception as e:
+            logger.warning(f"Error during RobotBodyControl cleanup: {e}")

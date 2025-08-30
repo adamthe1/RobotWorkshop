@@ -95,7 +95,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
               specular="1"/> 
 
     <model name="panda" file="panda_for_duplicating.xml"/>
-
+    <model name="so101" file="so101_for_duplicating.xml"/>
   </asset>
 
   <worldbody>'''

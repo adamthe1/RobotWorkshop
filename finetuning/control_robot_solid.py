@@ -25,7 +25,7 @@ class TeleopConfig:
     arm_joint_names: List[str] = field(default_factory=lambda: ["joint1","joint2","joint3","joint4","joint5","joint6","joint7"])
     arm_act_names: List[str] = field(default_factory=lambda: ["actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7"])
     gripper_act_name: str = "actuator8"
-    add_prefix: str = "r1_"
+    add_prefix: str = "panda0_"
     use_prefix: bool = True
     up_axis: int = 2
     xy_step: float = 0.01
@@ -192,6 +192,7 @@ class RobotModel:
         if len(self.arm_dof) != 7:
             raise RuntimeError(f"Expected 7 arm DoFs, got {len(self.arm_dof)}")
         self.arm_act_ids = [self._actuator_index(nm) for nm in cfg.arm_act_names]
+        self.full_arm_act_ids = self.arm_act_ids.copy()
         if cfg.use_prefix:
             joint7 = f"{cfg.add_prefix}joint7"
         else:
@@ -205,6 +206,7 @@ class RobotModel:
             lo, hi = self.model.actuator_ctrlrange[self.grip_act]
             self.grip_open_val = float(hi)
             self.grip_close_val = float(lo)
+            self.full_arm_act_ids.append(self.grip_act)
         except RuntimeError:
             self.has_gripper = False
             self.grip_act = None
@@ -515,8 +517,10 @@ class TeleopApp:
             substeps = min(self.cfg.subst_steps, int(accum))
             accum -= substeps
 
+            current_action = self.robot.data.ctrl[self.robot.full_arm_act_ids].copy()
+            #print(f"action: {current_action}")
+
             if recorder.is_recording:
-                current_action = self.robot.data.ctrl[self.robot.arm_act_ids].copy()
                 recorder.record_frame(action=current_action, done=False)
 
             # Handle camera toggle BEFORE control tick clears one-shot flags.
@@ -668,7 +672,7 @@ class TeleopApp:
         self.robot.data.ctrl[:] = 0.0
         for i, aid in enumerate(self.robot.arm_act_ids):
             lo, hi = self.robot.model.actuator_ctrlrange[aid]
-            self.robot.data.ctrl[aid] = float(clamp(q_des[i], lo, hi))
+            self.robot.data.ctrl[aid] = q_des[i] # already clamped
         # sticky grasp maintenance already updated above before reset
         self.gripper.apply()
 

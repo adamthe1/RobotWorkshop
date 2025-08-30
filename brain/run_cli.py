@@ -1,5 +1,5 @@
 import typer
-from control_panel.LLM import LLMClient
+from brain.LLM import LLMClient
 import re
 from logger_config import get_logger
 from control_panel.mission_manager import MissionManager

@@ -31,8 +31,8 @@ class RecordingConfig:
     video_height: int = 224
     video_fps: int = 30
     camera_names: List[str] = None
-    use_robot_prefix: bool = False  # NEW: control robot prefix usage
-    robot_prefix: str = "r1_"      # NEW: default robot prefix
+    use_robot_prefix: bool = True  # NEW: control robot prefix usage
+    robot_prefix: str = "panda0_"      # NEW: default robot prefix
     task: str = "robot_manipulation"
 
     def __post_init__(self):
