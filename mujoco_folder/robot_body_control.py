@@ -71,7 +71,7 @@ class ActionStaging:
             if self._has_new_data or self._repeat_last_action:
                 data.ctrl[:] = self._staged_ctrl
                 if self._has_new_data:
-                    logger.debug(f"Committed new actions: {self._staged_ctrl[:min(4, len(self._staged_ctrl))]}")
+                    logger.debug(f"Committed new actions: {self._staged_ctrl[:min(14, len(self._staged_ctrl))]}")
                 self._has_new_data = False
                 return True
             return False
@@ -89,7 +89,7 @@ class ActionStaging:
             logger.debug(f"Initialized action cache with current control values: {self._staged_ctrl[:min(4, len(self._staged_ctrl))]}")
 
 class RobotBodyControl:
-    def __init__(self, model, data):
+    def __init__(self, model, data, robot_dict=None):
         self.model = model
         self.data = data
         
@@ -100,11 +100,12 @@ class RobotBodyControl:
         self._snapshot_version = 0
         
         # Legacy components (will be updated to use snapshots)
+        self.embodiment_manager = EmbodimentManager(model, robot_dict=robot_dict)
         self.physics_extractor = PhysicsStateExtractor(model, data)
         self.action_manager = ActionManager(model, data)
         self.camera = None
-        self.embodiment_manager = EmbodimentManager(model)
         
+
         # Create initial snapshot
         self.update_snapshot()
 
@@ -231,7 +232,8 @@ class RobotBodyControl:
                 snapshot = None
             
             # Get joint state from snapshot
-            joints_dict = self.physics_extractor.get_joint_state(robot_id, snapshot)
+            joints = self.embodiment_manager.get_robot_joint_list(robot_id)
+            joints_dict = self.physics_extractor.get_joint_state(robot_id, joints, snapshot)
             packet.qpos = joints_dict['qpos']
             packet.qvel = joints_dict['qvel']
             packet.joint_names = joints_dict['joint_names']

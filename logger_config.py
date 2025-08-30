@@ -153,7 +153,7 @@ class GlobalLogger:
         
         # Set specific loggers to appropriate levels
         logging.getLogger('RobotQueue').setLevel(logging.INFO)
-        logging.getLogger('MainOrchestrator').setLevel(logging.DEBUG)
+        logging.getLogger('MainOrchestrator').setLevel(logging.INFO)
         logging.getLogger('CLI').setLevel(logging.INFO)
         logging.getLogger('BrainServer').setLevel(logging.INFO)
         logging.getLogger('BrainClient').setLevel(logging.INFO)
@@ -162,7 +162,7 @@ class GlobalLogger:
         logging.getLogger('ActionManager').setLevel(logging.DEBUG)
         logging.getLogger('MujocoClient').setLevel(logging.INFO)
         logging.getLogger('PhysicsStateExtractor').setLevel(logging.INFO)
-        logging.getLogger('RobotBodyControl').setLevel(logging.DEBUG)
+        logging.getLogger('RobotBodyControl').setLevel(logging.INFO)
 
     def get_logger(self, name):
         return logging.getLogger(name)

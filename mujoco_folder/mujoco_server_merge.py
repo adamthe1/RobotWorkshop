@@ -46,6 +46,7 @@ class MuJoCoServer:
         self.server_socket = None
         self.logger = get_logger('MujocoServer')
         self.robot_ids = ['r1']
+        self.robot_dict = {"r1": "FrankaPanda"}
         self.load_scene(xml_path, num_robots=num_robots)
         
         # Optionally load saved state from disk
@@ -76,22 +77,25 @@ class MuJoCoServer:
         # Note: main process handles SIGINT/SIGTERM; server exits via terminal
 
 
-    def load_scene(self, xml_path, num_robots=3):
+    def load_scene(self, xml_path, num_robots=None):  # Remove num_robots parameter since we use env vars
         if os.getenv("USE_DUPLICATING_PATH", "0") == "1":
             save_xml = os.getenv("MAIN_DIRECTORY") + "/xml_robots/panda_scene.xml"
-            xml_path, robot_ids = save_xml_file(save_xml, num_robots=num_robots)
-            self.robot_ids = robot_ids
-        # Load MuJoCo model (real)
-        self.logger.info(f"New mujoco, Loading MuJoCo model from: {xml_path}")
+            xml_path, robot_dict = save_xml_file(save_xml)  # Now returns robot_dict
+            self.robot_dict = robot_dict  # Store robot type mapping
+            self.robot_ids = list(robot_dict.keys())  # Extract robot IDs
+            
+        # Load MuJoCo model
+        self.logger.info(f"Loading MuJoCo model from: {xml_path}")
         model_path = Path(xml_path)
         if not model_path.exists():
             raise FileNotFoundError(f"Model file not found: {xml_path}")
         self.model = mujoco.MjModel.from_xml_path(str(model_path))
-        self.data  = mujoco.MjData(self.model)
+        self.data = mujoco.MjData(self.model)
         self.logger.info("Model and data initialized successfully")
 
-        self.robot_control = RobotBodyControl(self.model, self.data)
-        self.logger.info("RobotBodyControl initialized successfully")
+        # Pass robot dict to RobotBodyControl
+        self.robot_control = RobotBodyControl(self.model, self.data, robot_dict=self.robot_dict)
+        self.logger.info(f"RobotBodyControl initialized with robots: {self.robot_dict}")
 
 
 
@@ -220,11 +224,16 @@ class MuJoCoServer:
         This is a stub method that simulates receiving a list of robots.
         """
         packet.robot_list = self.get_robot_list()
+        packet.robot_dict = self.get_robot_dict()
         return packet
-
+        
     def get_robot_list(self):
         """Return a list of robot IDs (stubbed)"""
         return self.robot_ids
+
+    def get_robot_dict(self):
+        """Return a dictionary mapping robot IDs to their types (stubbed)"""
+        return self.robot_dict
 
     def step_once(self):
         """Advance the physics by one timestep"""
@@ -381,7 +390,21 @@ class MujocoClient:
             raise ValueError("Failed to receive robot list from server")
         client.close()
         return packet.robot_list
-        
+    
+    @staticmethod
+    def recv_robot_dict():
+        """
+        Receive the list of robots and their types from the server.
+        """
+        client = MujocoClient()
+        client.connect()
+        packet = RobotListPacket(robot_id='robot_list')
+        packet = client.send_and_recv(packet)
+        if packet is None or not hasattr(packet, 'robot_list'):
+            raise ValueError("Failed to receive robot list from server")
+        client.close()
+        return packet.robot_dict
+
     def send_and_recv(self, packet):
         """
         Send a pickled packet and receive the pickled reply, with debug logs.

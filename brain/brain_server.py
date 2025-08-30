@@ -8,6 +8,7 @@ import pickle
 import struct
 import time
 import threading
+import signal  # Add signal import
 import numpy as np
 from pathlib import Path
 
@@ -28,6 +29,7 @@ class BrainServer:
         self.running = True
         self.server_socket = None
         self.logger = get_logger('BrainServer')
+        
         
         # Optional episode replay mapper or joint test mapper
         self.mapper = None
@@ -56,6 +58,26 @@ class BrainServer:
         # Setup networking
         self.setup_socket()
         self.logger.info("Brain server initialized")
+        signal.signal(signal.SIGTERM, self._signal_handler)
+        signal.signal(signal.SIGINT, self._signal_handler)
+        
+    def _signal_handler(self, signum, frame):
+        print(f"Logging server received signal {signum}, shutting down...")
+        self.shutdown()
+
+    def shutdown(self):
+        """Clean shutdown of the brain server"""
+        self.logger.info("Stopping brain server...")
+        self.running = False
+        if self.server_socket:
+            try:
+                self.server_socket.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing brain server socket: {e}")
+            finally:
+                self.server_socket = None
+        self.logger.info("Brain server stopped")
+        sys.exit(0)
 
     def setup_socket(self):
         """Set up the TCP server socket"""
@@ -96,6 +118,7 @@ class BrainServer:
             else:
                 action_dim = 7
             action = np.random.uniform(-0.1, 0.1, action_dim).tolist()
+        
         
         # Log what we're doing
         self.logger.debug(f"Generating action for robot {robot_id}, mission: {mission}")
@@ -154,24 +177,28 @@ class BrainServer:
         
         try:
             while self.running:
-                client, addr = self.server_socket.accept()
-                t = threading.Thread(
-                    target=self.handle_client,
-                    args=(client, addr),
-                    daemon=True
-                )
-                t.start()
+                try:
+                    client, addr = self.server_socket.accept()
+                    t = threading.Thread(
+                        target=self.handle_client,
+                        args=(client, addr),
+                        daemon=True
+                    )
+                    t.start()
+                except OSError:
+                    if self.running:  # Only log if not intentionally stopping
+                        self.logger.error("Brain server socket error")
+                    break
         except KeyboardInterrupt:
-            self.logger.info("Brain server interrupted")
+            self.logger.info("Brain server interrupted by user (Ctrl+C)")
+        except Exception as e:
+            self.logger.error(f"Brain server error: {e}")
         finally:
-            self.close()
+            self.shutdown()
 
     def close(self):
-        """Cleanup server socket"""
-        self.logger.info("Shutting down brain server...")
-        self.running = False
-        if self.server_socket:
-            self.server_socket.close()
+        """Cleanup server socket (called by shutdown)"""
+        self.shutdown()
 
 
 class BrainClient:

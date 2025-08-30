@@ -60,6 +60,7 @@
               specular="1"/> 
 
     <model name="panda" file="panda_for_duplicating.xml"/>
+
   </asset>
 
   <worldbody>
@@ -69,13 +70,14 @@
             material="wood_floor_mat"
             contype="0" conaffinity="0"/>
     </body>
-
-    <!-- ==================== ROBOT 1 SCENE ==================== -->
+            <!-- ==================== ROBOT 1 SCENE ==================== -->
     
     <!-- Robot 1 -->
     <body name="robot1" pos="0 0.0 0">
-      <attach model="panda" body="link0" prefix="r1_"/>
+      <attach model="panda" body="link0" prefix="panda0_"/>
     </body>
+
+    
 
     <!-- Bar wall for robot 1 -->
     <body name="bar_wall1" pos="-1.0 0.0 0.4">
@@ -146,13 +148,14 @@
             solimp="0.95 0.995 0.0005" solref="0.004 1" />
     </body>
     
-
-    <!-- ==================== ROBOT 2 SCENE ==================== -->
+            <!-- ==================== ROBOT 2 SCENE ==================== -->
     
     <!-- Robot 2 -->
     <body name="robot2" pos="0 2.0 0">
-      <attach model="panda" body="link0" prefix="r2_"/>
+      <attach model="panda" body="link0" prefix="panda1_"/>
     </body>
+
+    
 
     <!-- Bar wall for robot 2 -->
     <body name="bar_wall2" pos="-1.0 2.0 0.4">
@@ -219,237 +222,6 @@
             solimp="0.95 0.995 0.0005" solref="0.004 1" />
       <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
       <geom name="yellow_bottle_neck2" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-    
-
-    <!-- ==================== ROBOT 3 SCENE ==================== -->
-    
-    <!-- Robot 3 -->
-    <body name="robot3" pos="0 4.0 0">
-      <attach model="panda" body="link0" prefix="r3_"/>
-    </body>
-
-    <!-- Bar wall for robot 3 -->
-    <body name="bar_wall3" pos="-1.0 4.0 0.4">
-      <geom type="box"
-            size="0.1 1.0 0.8"
-            material="bar_mat"
-            density="2000"
-            contype="1" conaffinity="1"/>
-    </body>
-
-    <!-- Table for robot 3 -->
-    <body name="table3" pos="0.8 4.0 0.3">
-      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
-    </body>
-
-    <!-- Wine bottle for robot 3 -->
-    <body name="wine_bottle_body3" pos="0.6 3.75 0.8">
-      <joint name="wine_bottle_free3" type="free"/>
-      <geom type="mesh"
-            mesh="wine_bottle_mesh"
-            material="glass_mat"
-            contype="1"
-            density="700"
-            friction="3.0 0.08 0.008"
-            conaffinity="1"/>
-      <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
-    </body>
-
-    <!-- Wine glass for robot 3 -->
-    <body name="Wine_glass3" pos="0.6 4.3 0.9" euler="89.55 90 0">
-      <joint name="wine_glass_free3" type="free"/>
-      <geom type="mesh"
-            mesh="wine_glass_mesh"
-            material="glass_mat"
-            density="1200"
-            contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
-    </body>
-    
-    <!-- Green square bottle for robot 3 -->
-    <body name="green_bottle_body3" pos="0.6 4.05 0.79">
-      <joint name="green_bottle_free3" type="free"/>
-    <geom name="green_bottle_body3" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="green_bottle_base3" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="green_bottle_neck3" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-
-    <!-- Yellow square bottle for robot 3 -->
-    <body name="yellow_bottle_body3" pos="0.6 3.9 0.79">
-      <joint name="yellow_bottle_free3" type="free"/>
-            <geom name="yellow_bottle_body3" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="yellow_bottle_base3" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="yellow_bottle_neck3" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-    
-
-    <!-- ==================== ROBOT 4 SCENE ==================== -->
-    
-    <!-- Robot 4 -->
-    <body name="robot4" pos="0 6.0 0">
-      <attach model="panda" body="link0" prefix="r4_"/>
-    </body>
-
-    <!-- Bar wall for robot 4 -->
-    <body name="bar_wall4" pos="-1.0 6.0 0.4">
-      <geom type="box"
-            size="0.1 1.0 0.8"
-            material="bar_mat"
-            density="2000"
-            contype="1" conaffinity="1"/>
-    </body>
-
-    <!-- Table for robot 4 -->
-    <body name="table4" pos="0.8 6.0 0.3">
-      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
-    </body>
-
-    <!-- Wine bottle for robot 4 -->
-    <body name="wine_bottle_body4" pos="0.6 5.75 0.8">
-      <joint name="wine_bottle_free4" type="free"/>
-      <geom type="mesh"
-            mesh="wine_bottle_mesh"
-            material="glass_mat"
-            contype="1"
-            density="700"
-            friction="3.0 0.08 0.008"
-            conaffinity="1"/>
-      <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
-    </body>
-
-    <!-- Wine glass for robot 4 -->
-    <body name="Wine_glass4" pos="0.6 6.3 0.9" euler="89.55 90 0">
-      <joint name="wine_glass_free4" type="free"/>
-      <geom type="mesh"
-            mesh="wine_glass_mesh"
-            material="glass_mat"
-            density="1200"
-            contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
-    </body>
-    
-    <!-- Green square bottle for robot 4 -->
-    <body name="green_bottle_body4" pos="0.6 6.05 0.79">
-      <joint name="green_bottle_free4" type="free"/>
-    <geom name="green_bottle_body4" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="green_bottle_base4" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="green_bottle_neck4" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-
-    <!-- Yellow square bottle for robot 4 -->
-    <body name="yellow_bottle_body4" pos="0.6 5.9 0.79">
-      <joint name="yellow_bottle_free4" type="free"/>
-            <geom name="yellow_bottle_body4" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="yellow_bottle_base4" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="yellow_bottle_neck4" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-    
-
-    <!-- ==================== ROBOT 5 SCENE ==================== -->
-    
-    <!-- Robot 5 -->
-    <body name="robot5" pos="0 8.0 0">
-      <attach model="panda" body="link0" prefix="r5_"/>
-    </body>
-
-    <!-- Bar wall for robot 5 -->
-    <body name="bar_wall5" pos="-1.0 8.0 0.4">
-      <geom type="box"
-            size="0.1 1.0 0.8"
-            material="bar_mat"
-            density="2000"
-            contype="1" conaffinity="1"/>
-    </body>
-
-    <!-- Table for robot 5 -->
-    <body name="table5" pos="0.8 8.0 0.3">
-      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
-    </body>
-
-    <!-- Wine bottle for robot 5 -->
-    <body name="wine_bottle_body5" pos="0.6 7.75 0.8">
-      <joint name="wine_bottle_free5" type="free"/>
-      <geom type="mesh"
-            mesh="wine_bottle_mesh"
-            material="glass_mat"
-            contype="1"
-            density="700"
-            friction="3.0 0.08 0.008"
-            conaffinity="1"/>
-      <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
-    </body>
-
-    <!-- Wine glass for robot 5 -->
-    <body name="Wine_glass5" pos="0.6 8.3 0.9" euler="89.55 90 0">
-      <joint name="wine_glass_free5" type="free"/>
-      <geom type="mesh"
-            mesh="wine_glass_mesh"
-            material="glass_mat"
-            density="1200"
-            contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
-    </body>
-    
-    <!-- Green square bottle for robot 5 -->
-    <body name="green_bottle_body5" pos="0.6 8.05 0.79">
-      <joint name="green_bottle_free5" type="free"/>
-    <geom name="green_bottle_body5" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="green_bottle_base5" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="green_bottle_neck5" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-
-    <!-- Yellow square bottle for robot 5 -->
-    <body name="yellow_bottle_body5" pos="0.6 7.9 0.79">
-      <joint name="yellow_bottle_free5" type="free"/>
-            <geom name="yellow_bottle_body5" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="yellow_bottle_base5" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="yellow_bottle_neck5" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
             mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
             solimp="0.95 0.995 0.0005" solref="0.004 1" />
     </body>

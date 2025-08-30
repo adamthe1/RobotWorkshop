@@ -1,7 +1,6 @@
 import mujoco
 import numpy as np  
 from logger_config import get_logger
-from .embodiment_manager import EmbodimentManager
 
 logger = get_logger("PhysicsStateExtractor")
 
@@ -9,9 +8,8 @@ class PhysicsStateExtractor:
     def __init__(self, model, data):
         self.model = model
         self.data = data  # Keep for legacy compatibility, but prefer snapshots
-        self.embodiment_manager = EmbodimentManager(model)
 
-    def get_joint_state(self, robot_id, snapshot=None):
+    def get_joint_state(self, robot_id, joints, snapshot=None):
         """Get joint state from snapshot (preferred) or direct data access (legacy)"""
         joint_names = []
         qpos_list = []
@@ -36,7 +34,7 @@ class PhysicsStateExtractor:
             
         # Extract joint names, qpos, and qvel from the model
         logger.debug(f"joint amount {self.model.njnt}")
-        joints = self.embodiment_manager.get_robot_joint_list(robot_id)
+
         for j in joints:
             logger.debug("Extracting joint %s", j)
             jname = str(j)

@@ -37,12 +37,6 @@ class JointTestMapper:
         self.phases = [
             "individual_joints_positive",
             "individual_joints_negative", 
-            "all_joints_extreme_positive",
-            "all_joints_extreme_negative",
-            "sine_wave_all_joints",
-            "alternating_pattern",
-            "random_combinations",
-            "return_to_zero"
         ]
         
         # Maintain independent cursors per robot

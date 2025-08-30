@@ -4,6 +4,10 @@ MuJoCo Scene Generator for Panda Robot Bar Scene
 Allows easy Y-offset adjustment and multiple robot creation with incrementing prefixes.
 All objects (except floor) duplicate with each robot using the same spacing.
 """
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
     """
@@ -17,7 +21,12 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
     Returns:
         str: Complete MuJoCo XML string
     """
-    
+
+    num_franka = int(os.getenv("FRANKA_PANDA_COUNT", 1))
+    num_so101 = int(os.getenv("SO101_COUNT", 1))
+    robot_dict = {**{f'panda{i}': "FrankaPanda" for i in range(num_franka)},
+                  **{f'so101_{i}': "SO101" for i in range(num_so101)}}
+
     # Helper function to apply Y offset to position
     def pos_with_offset(x, y, z, robot_index=0):
         total_y = y + y_offset + (robot_index * robot_spacing)
@@ -86,6 +95,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
               specular="1"/> 
 
     <model name="panda" file="panda_for_duplicating.xml"/>
+
   </asset>
 
   <worldbody>'''
@@ -99,21 +109,32 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             contype="0" conaffinity="0"/>
     </body>'''
 
-    robot_ids = []
     # Add complete scene for each robot
-    for j in range(num_robots):
+    for j, robot_id in enumerate(list(robot_dict.keys())):
         i = j + 1
-        prefix = f"r{i}_" if i > 0 else ""
-        robot_ids.append(f'r{i}')
+        prefix = f"{robot_id}_" if i > 0 else ""
 
-        xml_content += f'''
-
-    <!-- ==================== ROBOT {i} SCENE ==================== -->
+        if robot_dict[robot_id] == "FrankaPanda":
+            xml_content += f'''
+            <!-- ==================== ROBOT {i} SCENE ==================== -->
     
     <!-- Robot {i} -->
     <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
-    </body>
+    </body>'''
+
+        elif robot_dict[robot_id] == "SO101":
+            xml_content += f'''
+            <!-- ==================== ROBOT {i} SCENE ==================== -->
+
+    <!-- Robot {i} -->
+    <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
+      <attach model="so101" body="base" prefix="{prefix}"/>
+    </body>'''
+
+        xml_content += f'''
+
+    
 
     <!-- Bar wall for robot {i} -->
     <body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, 0.4, j)}">
@@ -190,7 +211,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
   </worldbody>
 </mujoco>'''
 
-    return xml_content, robot_ids
+    return xml_content, robot_dict
 
 
 def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
@@ -203,12 +224,12 @@ def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
         num_robots (int): Number of robots to create
         robot_spacing (float): Spacing between robots in Y direction
     """
-    xml_content, robot_ids = generate_mujoco_xml(y_offset, num_robots, robot_spacing)
+    xml_content, robot_dict = generate_mujoco_xml(y_offset, num_robots, robot_spacing)
     
     with open(filename, 'w') as f:
         f.write(xml_content)
     
-    return filename, robot_ids
+    return filename, robot_dict
 
 
 
@@ -216,7 +237,7 @@ def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
 if __name__ == "__main__":
 
     # Example 4: Five robots with tight spacing
-    save_xml_file("/home/adam/Documents/coding/autonomous/xml_robots/panda_scene.xml", y_offset=0.0, num_robots=1, robot_spacing=2.5)
+    save_xml_file("/home/adam/Documents/coding/autonomous/xml_robots/panda_scene.xml", y_offset=0.0, robot_spacing=2.5)
     
     # Show layout summary for the multi-robot example
     
