@@ -217,12 +217,7 @@ class MuJoCoServer:
             self.viewer = None
     
     def cleanup_on_exit(self):
-        """Simple cleanup on exit"""
-        if self.viewer:
-            try:
-                self.viewer.close()
-            except:
-                pass
+        pass
         
 
     def fill_robot_list(self, packet):

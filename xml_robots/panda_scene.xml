@@ -149,10 +149,10 @@
     </body>
     
             <!-- ==================== ROBOT 2 SCENE ==================== -->
-
+    
     <!-- Robot 2 -->
     <body name="robot2" pos="0 2.0 0">
-      <attach model="so101" body="base" prefix="so101_0_"/>
+      <attach model="panda" body="link0" prefix="panda1_"/>
     </body>
 
     
@@ -227,10 +227,10 @@
     </body>
     
             <!-- ==================== ROBOT 3 SCENE ==================== -->
-
+    
     <!-- Robot 3 -->
     <body name="robot3" pos="0 4.0 0">
-      <attach model="so101" body="base" prefix="so101_1_"/>
+      <attach model="panda" body="link0" prefix="panda2_"/>
     </body>
 
     

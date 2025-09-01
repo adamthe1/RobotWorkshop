@@ -173,17 +173,4 @@ class LightweightViewer:
 
 
     def close(self) -> None:
-        try:
-            if self.window is not None:
-                glfw.destroy_window(self.window)
-                self.window = None
-            # Free MuJoCo rendering resources
-            if self.ctx is not None:
-                mujoco.mjr_freeContext(self.ctx)
-                self.ctx = None
-            if self.scn is not None:
-                mujoco.mjv_freeScene(self.scn)
-                self.scn = None
-        finally:
-            # Terminate GLFW after destroying the window
-            glfw.terminate()
+        glfw.terminate()

@@ -46,12 +46,8 @@ class LoggingServer:
         self.server = None
         self.running = True
         self.setup_file_logging()
-        signal.signal(signal.SIGTERM, self._signal_handler)
-        signal.signal(signal.SIGINT, self._signal_handler)
+
         
-    def _signal_handler(self, signum, frame):
-        print(f"Logging server received signal {signum}, shutting down...")
-        self.shutdown()
 
     def shutdown(self):
         """Clean shutdown of the logging server"""

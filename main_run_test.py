@@ -106,7 +106,7 @@ class MainOrchestrator:
 
                 if packet.mission is None:
                     self.logger.info(f"Robot {robot_id} has no mission, resetting for next mission")
-                    break  # Exit current loop to get new mission
+                    raise Exception("No mission available")
                 
                 # Step 4: Send to Brain, get action
                 packet = brain_client.send_and_recv(packet)
@@ -118,14 +118,16 @@ class MainOrchestrator:
                 time.sleep(0.1)
                 
             except Exception as e:
-                self.logger.error(f"Error in inference loop for robot {robot_id}: {e}")
+                self.logger.error(f"Error in inference loop: {e}")
+                time.sleep(1)
+                self.logger.info(f"Retrying inference loop for robot {robot_id}, attempt {tries}")
                 tries -= 1
                 if tries <= 0:
                     self.logger.error(f"Max retries reached for robot {robot_id}, exiting loop")
-                    return
-                self.logger.info(f"Retrying inference loop for robot {robot_id}, attempts left: {tries}")
+                    self.shutdown()
                 mission_manager.reset_robot_and_mission(robot_id, mission)
-                time.sleep(1)
+                self.inference_loop(robot_id, clients, tries)
+                
                 
     def run(self):
         try:
@@ -138,9 +140,7 @@ class MainOrchestrator:
 
             # Get robot list from MuJoCo
             self.logger.info("Getting robot list...")
-            mujoco_temp_client = MujocoClient()
-            self.connect_to_mujoco(mujoco_temp_client)
-            self.robot_list = mujoco_temp_client.recv_robot_list()
+            self.robot_list = MujocoClient().recv_robot_list()
             
             if not self.robot_list:
                 self.logger.error("No robots found in the robot list")
@@ -179,9 +179,9 @@ class MainOrchestrator:
                 if terminated_servers:
                     self.logger.error(f"Servers terminated unexpectedly: {terminated_servers}")
                     break
-                    
-                time.sleep(5)  # Check every 5 seconds
-                
+
+                time.sleep(3)  # Check every 3 seconds
+
         except KeyboardInterrupt:
             self.logger.info("Interrupted by user")
         except Exception as e:
