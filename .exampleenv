@@ -13,8 +13,8 @@ LOAD_SAVED_STATE = 1
 # franka_emika_panda/scene_bar_new_ziv.xml
 
 # Robot configuration
-FRANKA_PANDA_COUNT = 1
-SO101_COUNT = 2
+FRANKA_PANDA_COUNT = 2
+SO101_COUNT = 0
 
 
 QUEUE_HOST = 'localhost'
