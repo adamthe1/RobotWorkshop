@@ -100,7 +100,7 @@
       <geom mesh="link0_11" material="white"     class="visual"/>
       <!-- collisions -->
       <geom mesh="link0_c" class="collision"/>
-     <camera name="main_cam" pos="-0.1 0 1.8" quat="0.683013 0.183013 -0.183013 -0.683013" fovy="75"/>
+     <camera name="main_cam" pos="0 0 1.8" quat="0.701   0.092   -0.092   -0.701" fovy="75"/>
 
 
 

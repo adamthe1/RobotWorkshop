@@ -646,16 +646,7 @@ def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData,
         robot_prefix: Prefix for robot (e.g., "r1_", "r2_")
         use_prefix: Whether to use robot prefix for camera names
     """
-    config = RecordingConfig(
-        dataset_name=dataset_name,
-        output_dir=output_dir,
-        fps=60,
-        video_fps=30,
-        use_robot_prefix=use_prefix,
-        robot_prefix=robot_prefix,
-        video_width=224,
-        video_height=224
-    )
+    config = RecordingConfig()
     return LeRobotDatasetRecorder(model, data, config)
 
 def add_lerobot_controls(recorder: LeRobotDatasetRecorder, on_key_callback):
