@@ -31,3 +31,4 @@ BRAIN_PORT = 8900
 REPLAY_EPISODE_PATH=${MAIN_DIRECTORY}/finetuning/example_pouring/data/chunk-000/episode_000001.parquet
 
 OPENAI_API_KEY = 'api-key'
+GLM_API_KEY = 'api-key'

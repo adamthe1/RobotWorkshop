@@ -93,6 +93,7 @@ VISION_WEIGHTS_PATH = '/path/to/your/weights.pth'
 
 # OpenAI API key (if using language models)
 OPENAI_API_KEY = 'your-api-key-here'
+GLM_API_KEY = 'your-api-key-here'
 ```
 
 ## Usage
