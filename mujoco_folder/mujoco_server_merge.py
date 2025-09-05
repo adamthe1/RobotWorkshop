@@ -74,7 +74,7 @@ class MuJoCoServer:
         self.rgb_height = rgb_height
         self.viewer     = None
 
-        self.control_hz = 200  # Control frequency in Hz
+        self.control_hz = 60  # Control frequency in Hz
 
         self.no_viewer = int(os.getenv("NO_VIEWER", 0)) 
         self.logger.info(f"MuJoCo server initialized on {self.host}:{self.port} with no_viewer={self.no_viewer}")
@@ -396,7 +396,7 @@ class MujocoClient:
         return packet.robot_list
     
     @staticmethod
-    def recv_robot_dict():
+    def recv_robot_list_and_dict():
         """
         Receive the list of robots and their types from the server.
         """
@@ -404,10 +404,10 @@ class MujocoClient:
         client.connect()
         packet = RobotListPacket(robot_id='robot_list')
         packet = client.send_and_recv(packet)
-        if packet is None or not hasattr(packet, 'robot_list'):
-            raise ValueError("Failed to receive robot list from server")
+        if packet is None or not hasattr(packet, 'robot_dict'):
+            raise ValueError("Failed to receive robot dict from server")
         client.close()
-        return packet.robot_dict
+        return packet.robot_list, packet.robot_dict
 
     def send_and_recv(self, packet):
         """

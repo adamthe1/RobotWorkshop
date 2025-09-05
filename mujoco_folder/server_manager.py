@@ -131,7 +131,7 @@ class ServerManager:
         try:
             process = subprocess.Popen([
                 sys.executable,
-                "-m", "brain.run_cli"
+                "-m", "brain.CLI.run_cli"
             ], cwd=str(project_root),
             env={**os.environ, "PYTHONPATH": str(project_root)})
             

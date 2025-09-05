@@ -274,7 +274,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             <!-- ==================== ROBOT {i} SCENE ==================== -->
     
     <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0.2, 0, 0, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
     </body>'''
 
@@ -296,7 +296,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             
       # Robot Bar Scene (common for both robots)
 
-        xml_content += get_scene1(i, j, pos_with_offset)
+        xml_content += get_scene2(i, j, pos_with_offset)
 
     xml_content += '''
 

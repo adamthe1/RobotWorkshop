@@ -139,7 +139,8 @@ class MainOrchestrator:
 
             # Get robot list from MuJoCo
             self.logger.info("Getting robot list...")
-            self.robot_list = MujocoClient().recv_robot_list()
+            self.robot_list, self.robot_dict = MujocoClient().recv_robot_list_and_dict()
+
             
             if not self.robot_list:
                 self.logger.error("No robots found in the robot list")
@@ -147,6 +148,8 @@ class MainOrchestrator:
 
             self.logger.info(f"Robot list received: {self.robot_list}")
             MissionManager.set_robot_list(self.robot_list)
+            BrainClient.set_robot_dict(self.robot_dict)
+
 
             # Start inference loops for each robot
             for robot_id in self.robot_list:

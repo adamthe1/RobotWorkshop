@@ -12,7 +12,8 @@ import signal  # Add signal import
 import numpy as np
 from pathlib import Path
 
-from mujoco_folder.packet_example import Packet
+from mujoco_folder.packet_example import Packet, RobotListPacket
+from .policy_inference.policy_control import PolicyInference
 
 from logger_config import get_logger
 from dotenv import load_dotenv
@@ -31,30 +32,11 @@ class BrainServer:
         self.logger = get_logger('BrainServer')
         self.use_test_mapper = os.getenv("USE_TEST_MAPPER", "0") == "1"
         self.use_replay_mapper = os.getenv("USE_REPLAY_MAPPER", "0") == "1"
+        self.robot_dict = None
+        self.policy_inference = None
 
         # Optional episode replay mapper or joint test mapper
         self.mapper = None
-
-        if self.use_test_mapper:
-            try:
-                from .joint_test_mapper import JointTestMapper
-                self.mapper = JointTestMapper(
-                    num_joints=7,  # Default, will auto-adjust based on robot
-                    test_amplitude=1.5,
-                    loop=True
-                )
-                self.logger.info("JointTestMapper loaded for comprehensive joint testing")
-            except Exception as e:
-                self.logger.error(f"Failed to load JointTestMapper: {e}")
-        elif self.use_replay_mapper:
-            replay_path = os.getenv("REPLAY_EPISODE_PATH")
-            if replay_path:
-                try:
-                    from .episode_action_mapper import EpisodeActionMapper
-                    self.mapper = EpisodeActionMapper(replay_path)
-                    self.logger.info(f"EpisodeActionMapper loaded from {replay_path}")
-                except Exception as e:
-                    self.logger.error(f"Failed to load EpisodeActionMapper: {e}")
 
         # Setup networking
 
@@ -79,7 +61,7 @@ class BrainServer:
                 )
                 if self.use_replay_mapper:
                     progress = self.mapper.get_progress()
-                    self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}%")
+                    #self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}%")
                     if progress == 1.0:
                         packet.mission_status = 'completed'
                         self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
@@ -92,6 +74,7 @@ class BrainServer:
 
         if action is None:
             # Fallback: dummy small random action with plausible dim
+            self.logger.info("No mapper loaded or mapper failed, generating dummy action")
             if hasattr(packet, 'qpos') and packet.qpos is not None:
                 action_dim = len(packet.qpos)
             else:
@@ -139,7 +122,17 @@ class BrainServer:
                 pkt = self._recv_packet(client_socket)
                 if pkt is None:
                     break
-                    
+                # if the type of packet is RobotListPacket, update robot_dict
+                if isinstance(pkt, RobotListPacket):
+                    self.robot_dict = pkt.robot_dict
+                    self.policy_inference = PolicyInference(robot_dict=self.robot_dict) 
+                    self.logger.info(f"Updated robot_dict: {self.robot_dict}")
+                    reply = pkt
+                    self._send_packet(reply, client_socket)
+                    continue
+                if self.policy_inference is None:
+                    self.logger.error("Send robot_dict first using RobotListPacket")
+                    raise ValueError("robot_dict not set in BrainServer")
                 # Process packet and generate action
                 reply = self.fill_action(pkt)
                 self._send_packet(reply, client_socket)
@@ -231,6 +224,20 @@ class BrainClient:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((self.host, self.port))
         self.logger.info(f"Connected to Brain server at {self.host}:{self.port}")
+
+    @staticmethod
+    def set_robot_dict(robot_dict):
+        """
+        Set the dictionary of robots in the server.
+        """
+        client = BrainClient()
+        client.connect()
+        packet = RobotListPacket(robot_id='robot_list', robot_dict=robot_dict)
+        packet = client.send_and_recv(packet)
+        if packet is None or not hasattr(packet, 'robot_list'):
+            raise ValueError("Failed to receive robot list from server")
+        client.close()
+        return
     
     def send_and_recv(self, packet):
         """

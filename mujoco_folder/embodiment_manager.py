@@ -3,9 +3,8 @@ from logger_config import get_logger
 logger = get_logger("EmbodimentManager")
 
 class EmbodimentManager:
-    def __init__(self, model, robot_dict=None):
-        self.model = model
-        
+    def __init__(self, robot_dict=None):
+
         self.logger = get_logger('EmbodimentManager')
         if robot_dict is None:
             self.logger.warning("No robot_dict provided, defaulting to empty dict")

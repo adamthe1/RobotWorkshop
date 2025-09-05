@@ -91,6 +91,8 @@ class ActionStaging:
 
 class RobotBodyControl:
     def __init__(self, model, data, robot_dict=None):
+        if robot_dict is None:
+            logger.warning("RobotBodyControl initialized without robot_dict;")
         self.model = model
         self.data = data
         
@@ -101,7 +103,7 @@ class RobotBodyControl:
         self._snapshot_version = 0
         
         # Legacy components (will be updated to use snapshots)
-        self.embodiment_manager = EmbodimentManager(model, robot_dict=robot_dict)
+        self.embodiment_manager = EmbodimentManager(robot_dict=robot_dict)
         self.physics_extractor = PhysicsStateExtractor(model, data)
         self.action_manager = ActionManager()
 

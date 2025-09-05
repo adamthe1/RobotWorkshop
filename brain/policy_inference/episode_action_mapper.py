@@ -5,6 +5,9 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class EpisodeActionMapper:
@@ -23,10 +26,13 @@ class EpisodeActionMapper:
     This class is intentionally simple and deterministic to be safe.
     """
 
-    def __init__(self, parquet_path: str, loop: bool = True, slicing: int = 4):
-        p = Path(parquet_path)
+    def __init__(self):
+        p = Path(os.getenv("REPLAY_EPISODE_PATH", ""))
+        slicing = 4
+        loop = False
+
         if not p.exists():
-            raise FileNotFoundError(f"Parquet file not found: {parquet_path}")
+            raise FileNotFoundError(f"Parquet file not found: {p}")
         self.df = pd.read_parquet(p)
         if 'action' not in self.df.columns:
             raise ValueError("Parquet missing 'action' column")
@@ -49,8 +55,7 @@ class EpisodeActionMapper:
         """Reset cursor to beginning - robot_id parameter ignored for compatibility"""
         self.cursor = 0
 
-    def next_action(self, robot_id: str, joint_names: Optional[List[str]] = None,
-                    qpos: Optional[List[float]] = None, qvel: Optional[List[float]] = None) -> List[float]:
+    def next_action(self) -> List[float]:
         """
         Return the next action - robot_id parameter ignored for compatibility.
         
@@ -83,4 +88,8 @@ class EpisodeActionMapper:
         if self.T == 0:
             return 1.0
         return min(1.0, self.cursor / self.T)
+    
+    def load_type(self, robot_type: str) -> bool:
+        """Load type for compatibility - no-op."""
+        return True
 
