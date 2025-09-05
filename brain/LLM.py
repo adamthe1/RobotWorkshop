@@ -34,7 +34,7 @@ class LLMClient:
         else: 
             self.api_key = os.getenv('GLM_API_KEY')
             self.api_url = 'https://api.z.ai/api/paas/v4/chat/completions'
-            self.model = 'glm-4-32b-0414-128k'
+            self.model = 'glm-4.5'
         self.headers = {'Authorization': f'Bearer {self.api_key}'}
         self.data = {
             'model': self.model,

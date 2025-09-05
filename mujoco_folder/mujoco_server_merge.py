@@ -74,6 +74,8 @@ class MuJoCoServer:
         self.rgb_height = rgb_height
         self.viewer     = None
 
+        self.control_hz = 200  # Control frequency in Hz
+
         self.no_viewer = int(os.getenv("NO_VIEWER", 0)) 
         self.logger.info(f"MuJoCo server initialized on {self.host}:{self.port} with no_viewer={self.no_viewer}")
         
@@ -203,7 +205,7 @@ class MuJoCoServer:
             self.logger.info("Lightweight viewer initialized successfully; entering render loop")
 
             # Render loop at ~60 FPS in this thread
-            dt = 1.0 / 60.0
+            dt = 1.0 / self.control_hz
             while self.running and self.viewer.is_running():
                 with self.locker:
                     # Render the current scene safely while physics may update
@@ -291,8 +293,8 @@ class MuJoCoServer:
             client_socket.close()  # Close this specific client
             self.logger.info(f"Client {addr} disconnected")
 
-    def simulation_thread(self, control_hz=60):
-        dt = 1.0 / control_hz
+    def simulation_thread(self):
+        dt = 1.0 / self.control_hz
         next_time = time.time()
         
         # Enable action repeat mode for gravity compensation

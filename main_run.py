@@ -97,16 +97,15 @@ class MainOrchestrator:
                 self.logger.debug(f"{robot_id} Received robot state: {packet.qpos}")
                 
                 if packet is None:
-                    self.logger.warning(f"Robot {robot_id} state is None, skipping...")
-                    time.sleep(0.1)
-                    continue
-                    
+                    self.logger.error(f"Packet is None from Mujoco for robot {robot_id}")
+                    raise Exception("Did not return packet from Mujoco")
+
                 # Step 3: Send to mission analyzer, get mission state
                 packet = mission_manager.manage_mission(packet)
 
                 if packet.mission is None:
                     self.logger.info(f"Robot {robot_id} has no mission, resetting for next mission")
-                    raise Exception("No mission available")
+                    self.inference_loop(robot_id, clients)
                 
                 # Step 4: Send to Brain, get action
                 packet = brain_client.send_and_recv(packet)

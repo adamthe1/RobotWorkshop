@@ -9,6 +9,153 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+def get_scene1(i, j, pos_with_offset):
+     # Just before the per-robot loop, add handy heights/positions for table/pedestals/coasters:
+    table_top_z = 0.3 + 0.35          # table body z + halfheight
+    ped_h = 0.06                      # small pedestal halfheight
+    ped_top_z = table_top_z + ped_h   # pedestal top z (center of pedestal body)
+    coaster_h = 0.002                 # thin coaster halfheight
+    right_ped_xy = (0.8, 0.3)        # bottles pedestal on table (x,y)
+    left_ped_xy  = (0.8, -0.3)       # cups pedestal on table (x,y)
+    return f'''
+
+    <!-- Bar wall for robot {i} -->
+    <body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, 0.4, j)}">
+      <geom type="box" size="0.1 1.0 0.8" material="bar_mat" density="2000" contype="1" conaffinity="1"/>
+    </body>
+
+    <!-- Table for robot {i} -->
+    <body name="table{i}" pos="{pos_with_offset(0.8, 0.0, 0.3, j)}">
+      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <!-- Small pedestals on the table -->
+    <body name="pedestal_left{i}" pos="{pos_with_offset(left_ped_xy[0], left_ped_xy[1], ped_top_z, j)}">
+      <geom type="box" size="0.15 0.15 {ped_h}" material="pedestal_blue" contype="1" conaffinity="1" density="800"/>
+      <!-- Coasters on left pedestal (cups) -->
+    </body>
+
+    <body name="pedestal_right{i}" pos="{pos_with_offset(right_ped_xy[0], right_ped_xy[1], ped_top_z, j)}">
+      <geom type="box" size="0.2 0.2 {ped_h}" material="pedestal_blue" contype="1" conaffinity="1" density="800"/>
+      <!-- Two bottle coasters on right pedestal -->
+      <geom type="cylinder" pos="-0.06 0 {coaster_h + 0.0}" size="0.055 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
+      <geom type="cylinder" pos=" 0.06 0 {coaster_h + 0.0}" size="0.055 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- Small center coaster on the table (reference for cups) -->
+    <body name="center_coaster{i}" pos="{pos_with_offset(0.8, 0.0, table_top_z + coaster_h, j)}">
+      <geom type="cylinder" size="0.045 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
+    </body>
+
+    <!-- Wine glass for robot {i} (left pedestal, rear coaster) -->
+    <body name="Wine_glass{i}" pos="{pos_with_offset(left_ped_xy[0], left_ped_xy[1]-0.06, ped_top_z + 0.15 + coaster_h, j)}" euler="89.55 90 0">
+      <joint name="wine_glass_free{i}" type="free"/>
+      <geom type="mesh" mesh="wine_glass_mesh" material="glass_mat" density="1200" contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
+    </body>
+
+    <!-- Big beer glass for robot {i} (left pedestal, front coaster) -->
+    <body name="beer_glass{i}" pos="{pos_with_offset(left_ped_xy[0], left_ped_xy[1]+0.06, ped_top_z + 0.16 + coaster_h, j)}">
+      <joint name="beer_glass_free{i}" type="free"/>
+      <!-- Outer glass -->
+      <geom type="cylinder" size="0.05 0.12" material="glass_mat" contype="1" conaffinity="1" friction="2.0 0.05 0.005" condim="6"/>
+    </body>
+    
+    <!-- Green square bottle (right pedestal, right coaster) -->
+    <body name="green_bottle_body{i}" pos="{pos_with_offset(right_ped_xy[0], right_ped_xy[1]+0.06, ped_top_z + 0.14 + coaster_h, j)}">
+      <joint name="green_bottle_free{i}" type="free"/>
+      <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+
+    <!-- Yellow square bottle (right pedestal, left coaster) -->
+    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(right_ped_xy[0], right_ped_xy[1]-0.06, ped_top_z + 0.14 + coaster_h, j)}">
+      <joint name="yellow_bottle_free{i}" type="free"/>
+      <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+    '''
+
+def get_scene2(i, j, pos_with_offset):
+    return f'''<!-- Bar wall for robot {i} -->
+<body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, 0.4, j)}">
+  <geom type="box"
+        size="0.1 1.0 0.8"
+        material="bar_mat"
+        density="2000"
+        contype="1" conaffinity="1"/>
+</body>
+
+<!-- Table for robot {i} -->
+<body name="table{i}" pos="{pos_with_offset(0.8, 0.0, 0.3, j)}">
+  <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+</body>
+
+<!-- Wine bottle for robot {i} -->
+<body name="wine_bottle_body{i}" pos="{pos_with_offset(0.6, -0.25, 0.80, j)}">
+  <joint name="wine_bottle_free{i}" type="free"/>
+  <geom type="mesh"
+        mesh="wine_bottle_mesh"
+        material="glass_mat"
+        contype="1"
+        density="700"
+        friction="3.0 0.08 0.008"
+        conaffinity="1"/>
+  <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
+</body>
+
+<!-- Wine glass for robot {i} -->
+<body name="Wine_glass{i}" pos="{pos_with_offset(0.6, 0.3, 0.9, j)}" euler="89.55 90 0">
+  <joint name="wine_glass_free{i}" type="free"/>
+  <geom type="mesh"
+        mesh="wine_glass_mesh"
+        material="glass_mat"
+        density="1200"
+        contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
+</body>
+
+<!-- Green square bottle for robot {i} -->
+<body name="green_bottle_body{i}" pos="{pos_with_offset(0.6, 0.05, 0.79, j)}">
+  <joint name="green_bottle_free{i}" type="free"/>
+<geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
+        contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+        solimp="0.95 0.995 0.0005" solref="0.004 1" />
+  <!-- wider base plate to improve stability when placing the bottle down -->
+  <geom name="green_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+        mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+        solimp="0.95 0.995 0.0005" solref="0.004 1" />
+  <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
+  <geom name="green_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
+        mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+        solimp="0.95 0.995 0.0005" solref="0.004 1" />
+</body>
+
+<!-- Yellow square bottle for robot {i} -->
+<body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.6, -0.1, 0.79, j)}">
+  <joint name="yellow_bottle_free{i}" type="free"/>
+        <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
+        contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+        solimp="0.95 0.995 0.0005" solref="0.004 1" />
+  <!-- wider base plate to improve stability when placing the bottle down -->
+  <geom name="yellow_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
+        mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+        solimp="0.95 0.995 0.0005" solref="0.004 1" />
+  <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
+  <geom name="yellow_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
+        mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
+        solimp="0.95 0.995 0.0005" solref="0.004 1" />
+</body>
+'''
+
+
+
 def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
     """
     Generate MuJoCo XML for panda robot bar scene.
@@ -60,12 +207,18 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             texrepeat="1 1"
             reflectance="0.2" shininess="0.5" specular="1"/>
 
+       <!-- Blue pedestal material -->
+    <material name="pedestal_blue" rgba="0 0 1 1" reflectance="0.1" shininess="0.2" specular="0.2"/>
+
     <!-- Red liquid -->
     <material name="liquid_red" rgba="0.6 0.0 0.0 0.9" reflectance="0.2" shininess="0.3" specular="0.4"/>
 
     <material name="glass_mat" rgba="1 0.9 0.9 0.5" reflectance="0.5" shininess="0.9" specular="1"/>
     <material name="glass_green" rgba="0.2 0.8 0.2 0.6" reflectance="0.5" shininess="0.9" specular="1"/>
     <material name="glass_yellow" rgba="0.9 0.9 0.2 0.6" reflectance="0.5" shininess="0.9" specular="1"/>
+    <!-- Beer liquid + coaster materials -->
+    <material name="beer_mat" rgba="0.95 0.75 0.2 0.85" reflectance="0.2" shininess="0.2" specular="0.3"/>
+    <material name="coaster_mat" rgba="0.8 0.2 0.2 1" reflectance="0.05" shininess="0.1" specular="0.1"/>
 
     <material name="wine_mat"
               rgba="0.6 0.0 0.0 0.8" 
@@ -109,6 +262,8 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             contype="0" conaffinity="0"/>
     </body>'''
 
+   
+
     # Add complete scene for each robot
     for j, robot_id in enumerate(list(robot_dict.keys())):
         i = j + 1
@@ -119,7 +274,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             <!-- ==================== ROBOT {i} SCENE ==================== -->
     
     <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.2, 0, 0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
     </body>'''
 
@@ -128,83 +283,20 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0):
             <!-- ==================== ROBOT {i} SCENE ==================== -->
 
     <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
+    <!-- Pedestal for robot {i} -->
+      <body name="pedestal{i}" pos="{pos_with_offset(0.3, 0, 0, j)}">
+        <geom type="box"
+              size="0.1 0.1 0.65"
+              material="pedestal_blue"
+              contype="1" conaffinity="1" density="500"/>
+      </body>
+    <body name="robot{i}" pos="{pos_with_offset(0.3, 0, 0.65, j)}">
       <attach model="so101" body="base" prefix="{prefix}"/>
     </body>'''
+            
+      # Robot Bar Scene (common for both robots)
 
-        xml_content += f'''
-
-    
-
-    <!-- Bar wall for robot {i} -->
-    <body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, 0.4, j)}">
-      <geom type="box"
-            size="0.1 1.0 0.8"
-            material="bar_mat"
-            density="2000"
-            contype="1" conaffinity="1"/>
-    </body>
-
-    <!-- Table for robot {i} -->
-    <body name="table{i}" pos="{pos_with_offset(0.8, 0.0, 0.3, j)}">
-      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
-    </body>
-
-    <!-- Wine bottle for robot {i} -->
-    <body name="wine_bottle_body{i}" pos="{pos_with_offset(0.6, -0.25, 0.80, j)}">
-      <joint name="wine_bottle_free{i}" type="free"/>
-      <geom type="mesh"
-            mesh="wine_bottle_mesh"
-            material="glass_mat"
-            contype="1"
-            density="700"
-            friction="3.0 0.08 0.008"
-            conaffinity="1"/>
-      <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
-    </body>
-
-    <!-- Wine glass for robot {i} -->
-    <body name="Wine_glass{i}" pos="{pos_with_offset(0.6, 0.3, 0.9, j)}" euler="89.55 90 0">
-      <joint name="wine_glass_free{i}" type="free"/>
-      <geom type="mesh"
-            mesh="wine_glass_mesh"
-            material="glass_mat"
-            density="1200"
-            contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
-    </body>
-    
-    <!-- Green square bottle for robot {i} -->
-    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.6, 0.05, 0.79, j)}">
-      <joint name="green_bottle_free{i}" type="free"/>
-    <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="green_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="green_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-
-    <!-- Yellow square bottle for robot {i} -->
-    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.6, -0.1, 0.79, j)}">
-      <joint name="yellow_bottle_free{i}" type="free"/>
-            <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
-            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- wider base plate to improve stability when placing the bottle down -->
-      <geom name="yellow_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
-            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-      <!-- square bottle neck (box) on top of body: halfheight 0.06 placed 0.20 above body center (0.14 + 0.06) -->
-      <geom name="yellow_bottle_neck{i}" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
-            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225"
-            solimp="0.95 0.995 0.0005" solref="0.004 1" />
-    </body>
-    '''
+        xml_content += get_scene1(i, j, pos_with_offset)
 
     xml_content += '''
 

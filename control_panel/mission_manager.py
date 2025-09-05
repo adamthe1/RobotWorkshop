@@ -78,25 +78,38 @@ class MissionManager:
         if not packet or packet.mission is None:
             raise ValueError("Invalid packet provided")
         
+        if packet.mission_status == 'completed':
+            return self.reset_packet(packet)
+        
+        packet.mission_status = 'ongoing'
+        
         if packet.submission is None:
-            
             packet = self.get_next_submission(packet)
             self.logger.debug(f"adding first submission to packet {packet.submission} for mission {packet.mission}")
             return packet
         
         result = self.status_checker.sub_mission_status(packet)
 
+        packet.submission_status = "completed" if result['done'] else "ongoing"
+
         if result['done']:
             if self.is_last_submission(packet):
-                self.logger.info(f"Mission {packet.mission} completed for robot {packet.robot_id}")
-                packet.mission = None
-                self.put_robot_in_queue(packet.robot_id)
-                self.status_checker.submission_counter.clear()  # Reset counter after mission completion
-                return packet
+                packet.mission_status = 'completed'
+                return self.reset_packet(packet)
             else:
                 packet = self.get_next_submission(packet)
                 return packet
             
+        return packet
+    
+    def reset_packet(self, packet):
+        self.logger.info(f"Mission {packet.mission} completed for robot {packet.robot_id}")
+        packet.mission = None
+        packet.mission_status = None
+        packet.submission = None
+        packet.submission_status = None
+        self.put_robot_in_queue(packet.robot_id)
+        self.status_checker.submission_counter.clear()  # Reset counter after mission completion
         return packet
     
     def put_robot_in_queue(self, robot_id):

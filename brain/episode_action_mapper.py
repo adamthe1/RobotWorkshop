@@ -77,4 +77,10 @@ class EpisodeActionMapper:
         # Advance cursor
         self.cursor = idx + 1
         return act_out
+    
+    def get_progress(self) -> float:
+        """Return progress through the episode as a float in [0, 1]."""
+        if self.T == 0:
+            return 1.0
+        return min(1.0, self.cursor / self.T)
 

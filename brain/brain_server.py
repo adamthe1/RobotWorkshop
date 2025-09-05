@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class BrainServer:
-    def __init__(self, host=os.getenv("BRAIN_HOST", "localhost"), port=int(os.getenv("BRAIN_PORT", 8900)), use_test_mapper=False):
+    def __init__(self, host=os.getenv("BRAIN_HOST", "localhost"), port=int(os.getenv("BRAIN_PORT", 8900))):
         """
         Initialize Brain server for policy inference and action generation.
         """
@@ -29,12 +29,13 @@ class BrainServer:
         self.running = False
         self.server_socket = None
         self.logger = get_logger('BrainServer')
-        
-        
+        self.use_test_mapper = os.getenv("USE_TEST_MAPPER", "0") == "1"
+        self.use_replay_mapper = os.getenv("USE_REPLAY_MAPPER", "0") == "1"
+
         # Optional episode replay mapper or joint test mapper
         self.mapper = None
-        
-        if use_test_mapper:
+
+        if self.use_test_mapper:
             try:
                 from .joint_test_mapper import JointTestMapper
                 self.mapper = JointTestMapper(
@@ -45,7 +46,7 @@ class BrainServer:
                 self.logger.info("JointTestMapper loaded for comprehensive joint testing")
             except Exception as e:
                 self.logger.error(f"Failed to load JointTestMapper: {e}")
-        else:
+        elif self.use_replay_mapper:
             replay_path = os.getenv("REPLAY_EPISODE_PATH")
             if replay_path:
                 try:
@@ -69,13 +70,20 @@ class BrainServer:
         # If mapper loaded, replay action from episode; else generate dummy
         if self.mapper is not None:
             try:
+                
                 action = self.mapper.next_action(
                     robot_id=str(robot_id),
                     joint_names=getattr(packet, 'joint_names', None),
                     qpos=getattr(packet, 'qpos', None),
                     qvel=getattr(packet, 'qvel', None),
                 )
-                
+                if self.use_replay_mapper:
+                    progress = self.mapper.get_progress()
+                    self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}%")
+                    if progress == 1.0:
+                        packet.mission_status = 'completed'
+                        self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
+
             except Exception as e:
                 self.logger.error(f"Mapper failed, falling back to dummy: {e}")
                 action = None
