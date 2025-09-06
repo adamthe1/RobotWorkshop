@@ -46,10 +46,10 @@ class TeleopConfig:
     j1_center_k: float = 200.0
     j2_pref: float = -0.5
     j2_pref_k: float = 0.8
-    kp_yaw: float = 6.0
+    kp_yaw: float = 4.0
     # Joint jogging
     # User-requested large increments
-    joint_step: float = 8.0   # rad per control tick
+    joint_step: float = 3.0   # rad per control tick
     joint_step_coarse_factor: float = 20.0  # when Shift held
     # Sticky grasp config
     grasp_capture_dist: float = 0.15

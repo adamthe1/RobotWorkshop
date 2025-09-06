@@ -1,6 +1,7 @@
 from .episode_action_mapper import EpisodeActionMapper
 from .joint_test_mapper import JointTestMapper
 from .policy_embodiment_manager import PolicyEmbodimentManager
+from .preprocessing import Preprocessing
 from logger_config import get_logger
 from typing import List, Dict, Any
 import numpy as np
@@ -10,11 +11,26 @@ import time
 class PolicyManager:
     def __init__(self, robot_dict: Dict[str, str] = None):
         self.logger = get_logger('PolicyManager')
-        robot_types = set(robot_dict.values()) if robot_dict else set()
+        self.robot_dict = robot_dict or {}
+        robot_types = set(self.robot_dict.values())
         self.logger.info(f"Initializing PolicyManager with robot types: {robot_types}")
-        self.type_to_policy = {"FrankaPanda": "Episode", "SO101": "Episode"}
-        self.policies = {"Episode": EpisodeActionMapper(), "JointTest": JointTestMapper()}
-        self.load_types_into_policy(robot_types)
+
+        # Map robot types to policy names
+        self.type_to_policy = {"FrankaPanda": "Episode", "SO101": "Episode"}  # Extend as needed
+
+        # Find which policies are needed
+        needed_policy_names = set(self.type_to_policy[typ] for typ in robot_types if typ in self.type_to_policy)
+        self.logger.info(f"Policies needed: {needed_policy_names}")
+
+        # Initialize only needed policies, passing all robot types
+        self.policies = {}
+        for name in needed_policy_names:
+            if name == "Episode":
+                # Only MAIN_DIRECTORY is used; episodes resolved by type
+                self.policies[name] = EpisodeActionMapper(list(robot_types))
+            elif name == "JointTest":
+                self.policies[name] = JointTestMapper(list(robot_types))
+            # Add more policies here as needed
 
     def get_policy(self, name):
         return self.policies.get(name, None)
@@ -32,68 +48,66 @@ class PolicyManager:
             raise ValueError(f"No policy available for robot ID: {robot_id}")
         return self.get_policy_for_type(robot_type)
 
-    def load_types_into_policy(self, types):
-        for robot_type in types:
-            policy = self.get_policy_for_type(robot_type)
-            if policy:
-                result = policy.load_type(robot_type)
-                if result != True:
-                    self.logger.error(f"Failed to load policy for robot type: {robot_type}")
-                    raise ValueError(f"Failed to load policy for robot type: {robot_type}")
-                
-                self.logger.info(f"Loaded policy {policy.__class__.__name__} for robot type: {robot_type}")
-    
+
 
 class PolicyInference:
     def __init__(self, robot_dict):
         self.robot_dict = robot_dict
-
+        self.logger = get_logger('PolicyInference')
         self.embodiment_manager = PolicyEmbodimentManager(robot_dict=robot_dict)
         self.policy_manager = PolicyManager(robot_dict=robot_dict)
-        self.policy_manager.load_types_into_policy(set(robot_dict.values()))
-
+        self.preprocesser = Preprocessing(self.policy_manager.policies)
 
     def fill_action(self, packet):
         time_now = time.time()
         robot_id = packet.robot_id
         mission = packet.mission
+        submission = packet.submission
 
         try:
-            # Implement action inference logic based on the observation
-            policy_name, policy = self.policy_manager.get_policy_for_robot_id(packet.robot_id)
+            policy_item = self.preprocesser.preprocess(packet)
+            action_reply = self.get_policy_action(policy_item, robot_id)
+            action = action_reply.get('action', None)
+            mission_status = action_reply.get('mission_status', None)
 
-            if policy_name == 'Episode':
-                action = policy.next_action()
-                progress = self.mapper.get_progress()
-                #self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}%")
-                if progress == 1.0:
-                    packet.mission_status = 'completed'
-                    self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
-            
         except Exception as e:
-                self.logger.error(f"Mapper failed, falling back to dummy: {e}")
-                action = None
-        else:
+            self.logger.error(f"Policy inference failed, falling back to dummy: {e}")
             action = None
+            mission_status = None
 
         if action is None:
             # Fallback: dummy small random action with plausible dim
             self.logger.info("No mapper loaded or mapper failed, generating dummy action")
-            if hasattr(packet, 'qpos') and packet.qpos is not None:
-                action_dim = len(packet.qpos)
-            else:
-                action_dim = 7
-            action = np.random.uniform(-0.1, 0.1, action_dim).tolist()
-        
-        
-        # Log what we're doing
-        self.logger.debug(f"Generating action for robot {robot_id}, mission: {mission}")
-        self.logger.debug(f"Action: {action}")
-        
+            action = self.get_dummy_action(robot_id)
+
         # Fill the action in the packet
         packet.action = action
+        if mission_status is not None:
+            packet.mission_status = mission_status
+        
         time_taken = time.time() - time_now
         self.logger.debug(f"Action generated for robot {robot_id} in {time_taken:.2f} seconds")
         
         return packet
-            
+
+    def get_policy_action(self, policy_item, robot_id):
+        # Implement action inference logic based on the observation
+        policy_name, policy = self.policy_manager.get_policy_for_robot_id(robot_id)
+        self.logger.debug(f"Using policy '{policy_name}' for robot {robot_id} of type {self.robot_dict.get(robot_id, 'Unknown')}")
+        
+        reply = {'action': None, 'mission_status': None}
+        if policy_name == 'Episode':
+            robot_type = self.robot_dict.get(robot_id, None)
+            reply['action'] = policy.next_action(robot_id, robot_type, policy_item.get('prompt', ''))
+            progress = policy.get_progress(robot_id, robot_type, policy_item.get('prompt', ''))
+            self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}% action: {reply['action']}")
+            if progress == 1.0:
+                # only for episode mapper
+                reply['mission_status'] = 'completed'
+                self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
+                policy.reset(robot_id)
+        return reply
+
+    def get_dummy_action(self, robot_id):
+        action_dim = len(self.embodiment_manager.get_robot_actuator_list(robot_id))
+        return np.random.uniform(-0.1, 0.1, action_dim).tolist()       

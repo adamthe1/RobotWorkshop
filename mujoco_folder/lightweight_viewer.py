@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import glfw
 import mujoco
+import os
 
 
 class LightweightViewer:
@@ -66,8 +67,16 @@ class LightweightViewer:
         glfw.set_cursor_pos_callback(self.window, self._on_cursor_pos)
         glfw.set_scroll_callback(self.window, self._on_scroll)
         glfw.set_window_size_callback(self.window, self._on_resize)
+        glfw.set_key_callback(self.window, self._on_key)  
 
         return self
+    
+
+    def _on_key(self, window, key, scancode, action, mods):
+        """Handle keyboard input"""
+        if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
+            pass
+
 
     def is_running(self) -> bool:
         return self.window is not None and not glfw.window_should_close(self.window)

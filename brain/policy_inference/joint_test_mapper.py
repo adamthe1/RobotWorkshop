@@ -23,11 +23,12 @@ class JointTestMapper:
     Interface matches EpisodeActionMapper for drop-in replacement.
     """
 
-    def __init__(self, num_joints: int = 7, test_amplitude: float = 1.5, loop: bool = True):
-        self.num_joints = num_joints
-        self.test_amplitude = test_amplitude
-        self.loop = loop
-        
+    def __init__(self, types):
+        self.types = types
+        self.num_joints = 7 # Default, can be updated per robot
+        self.test_amplitude = 1.5
+        self.loop = True
+            
         # Test parameters
         self.sine_frequency = 0.1
         self.steps_per_joint = 20

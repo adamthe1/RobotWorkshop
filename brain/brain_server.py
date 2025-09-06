@@ -40,59 +40,6 @@ class BrainServer:
 
         # Setup networking
 
-    def fill_action(self, packet):
-        """
-        Generate action based on packet state.
-        This is where the actual policy/model inference would happen.
-        """
-        time_now = time.time()
-        robot_id = packet.robot_id
-        mission = packet.mission
-        
-        # If mapper loaded, replay action from episode; else generate dummy
-        if self.mapper is not None:
-            try:
-                
-                action = self.mapper.next_action(
-                    robot_id=str(robot_id),
-                    joint_names=getattr(packet, 'joint_names', None),
-                    qpos=getattr(packet, 'qpos', None),
-                    qvel=getattr(packet, 'qvel', None),
-                )
-                if self.use_replay_mapper:
-                    progress = self.mapper.get_progress()
-                    #self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}%")
-                    if progress == 1.0:
-                        packet.mission_status = 'completed'
-                        self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
-
-            except Exception as e:
-                self.logger.error(f"Mapper failed, falling back to dummy: {e}")
-                action = None
-        else:
-            action = None
-
-        if action is None:
-            # Fallback: dummy small random action with plausible dim
-            self.logger.info("No mapper loaded or mapper failed, generating dummy action")
-            if hasattr(packet, 'qpos') and packet.qpos is not None:
-                action_dim = len(packet.qpos)
-            else:
-                action_dim = 7
-            action = np.random.uniform(-0.1, 0.1, action_dim).tolist()
-        
-        
-        # Log what we're doing
-        self.logger.debug(f"Generating action for robot {robot_id}, mission: {mission}")
-        self.logger.debug(f"Action: {action}")
-        
-        # Fill the action in the packet
-        packet.action = action
-        time_taken = time.time() - time_now
-        self.logger.debug(f"Action generated for robot {robot_id} in {time_taken:.2f} seconds")
-        
-        return packet
-
     def _recv_packet(self, client_socket):
         """Receive a length-prefixed pickled packet"""
         size_data = client_socket.recv(4)
@@ -134,7 +81,7 @@ class BrainServer:
                     self.logger.error("Send robot_dict first using RobotListPacket")
                     raise ValueError("robot_dict not set in BrainServer")
                 # Process packet and generate action
-                reply = self.fill_action(pkt)
+                reply = self.policy_inference.fill_action(pkt)
                 self._send_packet(reply, client_socket)
                 
         except Exception as e:
@@ -265,7 +212,9 @@ class BrainClient:
                     raise ConnectionError("Incomplete payload: connection closed")
                 buf += chunk
             reply = pickle.loads(buf)
-            self.logger.debug(f"Brain send_and_recv - received reply with action: {reply.action}")
+            # if its not a RobotListPacket, log the action
+            if not isinstance(reply, RobotListPacket):
+                self.logger.debug(f"Brain send_and_recv - received reply with action: {reply.action}")
             return reply
         except Exception:
             self.logger.error("Exception in brain send_and_recv", exc_info=True)

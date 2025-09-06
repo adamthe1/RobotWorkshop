@@ -159,6 +159,9 @@ class GlobalLogger:
         logging.getLogger('MujocoClient').setLevel(logging.INFO)
         logging.getLogger('PhysicsStateExtractor').setLevel(logging.INFO)
         logging.getLogger('RobotBodyControl').setLevel(logging.INFO)
+        logging.getLogger('PolicyInference').setLevel(logging.DEBUG)
+        logging.getLogger('PolicyControl').setLevel(logging.DEBUG)
+        logging.getLogger('EpisodeActionMapper').setLevel(logging.DEBUG)
 
     def get_logger(self, name):
         return logging.getLogger(name)
