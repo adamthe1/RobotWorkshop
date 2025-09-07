@@ -161,7 +161,7 @@ class GlobalLogger:
         logging.getLogger('RobotBodyControl').setLevel(logging.INFO)
         logging.getLogger('PolicyInference').setLevel(logging.DEBUG)
         logging.getLogger('PolicyControl').setLevel(logging.DEBUG)
-        logging.getLogger('EpisodeActionMapper').setLevel(logging.DEBUG)
+        logging.getLogger('EpisodeActionMapper').setLevel(logging.INFO)
 
     def get_logger(self, name):
         return logging.getLogger(name)

@@ -47,6 +47,9 @@ class TeleopConfig:
     j2_pref: float = -0.5
     j2_pref_k: float = 0.8
     kp_yaw: float = 4.0
+    # IK objective toggles
+    enable_yaw_control: bool = False
+    enable_posture_objectives: bool = False
     # Joint jogging
     # User-requested large increments
     joint_step: float = 3.0   # rad per control tick
@@ -277,41 +280,54 @@ class IKController:
     def compute_qdot(self, des_pos: np.ndarray, des_yaw: float) -> np.ndarray:
         cur_pos, cur_R = self.robot.ee_pose()
         Jp = self.robot.jacobian_pos()
-        # Orientation Jacobian (angular velocity)
-        nv = self.robot.model.nv
-        Jp_full = np.zeros((3, nv)); Jr_full = np.zeros((3, nv))
-        mujoco.mj_jacSite(self.robot.model, self.robot.data, Jp_full, Jr_full, self.robot.ee_site_id)
-        Jr = Jr_full[:, self.robot.arm_dof]
 
+        # Primary task: Cartesian position tracking with damped least squares
         e_pos = des_pos - cur_pos
         v_pos = self.cfg.kp_pos * e_pos
         JJt = Jp @ Jp.T
         qdot_pos = Jp.T @ np.linalg.solve(JJt + (self.cfg.damping_lambda**2)*np.eye(3), v_pos)
 
-        q_arm = self.robot.data.qpos[self.robot.arm_dof]
-        z = np.zeros(7)
-        j_idx_upright = 1
-        q_upright = q_arm[j_idx_upright]
-        barrier_eps = math.radians(5.0)
+        # If no secondary objectives enabled, return early
+        if not (self.cfg.enable_yaw_control or self.cfg.enable_posture_objectives):
+            return qdot_pos
 
-        def soft_barrier(q, limit, eps):
-            return math.tanh((abs(q) - limit) / eps) * (1.0 if q >= 0.0 else -1.0)
-
-        z[j_idx_upright] += -self.cfg.j1_center_k * q_upright
-        z[j_idx_upright] += -self.cfg.j1_limit_k  * soft_barrier(q_upright, self.cfg.j1_limit, barrier_eps)
-
-        j_idx_prefbend = 3
-        q_prefbend = q_arm[j_idx_prefbend]
-        z[j_idx_prefbend] += -self.cfg.j2_pref_k * (q_prefbend - self.cfg.j2_pref)
-
+        # Build nullspace projector only if needed
         Jp_pinv = Jp.T @ np.linalg.solve(Jp @ Jp.T + (self.cfg.damping_lambda**2)*np.eye(3), np.eye(3))
         N = np.eye(7) - Jp_pinv @ Jp
-        # Secondary orientation task: regulate yaw about world Z
-        yaw_cur = math.atan2(cur_R[1,0], cur_R[0,0])
-        yaw_err = wrap_pi(yaw_cur - des_yaw)
-        w = np.array([0.0, 0.0, -self.cfg.kp_yaw * yaw_err])
-        JrJrT = Jr @ Jr.T + (self.cfg.damping_lambda**2) * np.eye(3)
-        qdot_yaw = Jr.T @ np.linalg.solve(JrJrT, w)
+
+        # Accumulate secondary terms
+        z = np.zeros(7)
+
+        if self.cfg.enable_posture_objectives:
+            q_arm = self.robot.data.qpos[self.robot.arm_dof]
+            j_idx_upright = 1
+            q_upright = q_arm[j_idx_upright]
+            barrier_eps = math.radians(5.0)
+
+            def soft_barrier(q, limit, eps):
+                return math.tanh((abs(q) - limit) / eps) * (1.0 if q >= 0.0 else -1.0)
+
+            z[j_idx_upright] += -self.cfg.j1_center_k * q_upright
+            z[j_idx_upright] += -self.cfg.j1_limit_k  * soft_barrier(q_upright, self.cfg.j1_limit, barrier_eps)
+
+            j_idx_prefbend = 3
+            q_prefbend = q_arm[j_idx_prefbend]
+            z[j_idx_prefbend] += -self.cfg.j2_pref_k * (q_prefbend - self.cfg.j2_pref)
+
+        qdot_yaw = np.zeros(7)
+        if self.cfg.enable_yaw_control:
+            # Orientation Jacobian (angular velocity) for the site
+            nv = self.robot.model.nv
+            Jp_full = np.zeros((3, nv)); Jr_full = np.zeros((3, nv))
+            mujoco.mj_jacSite(self.robot.model, self.robot.data, Jp_full, Jr_full, self.robot.ee_site_id)
+            Jr = Jr_full[:, self.robot.arm_dof]
+
+            # Secondary orientation task: regulate yaw about world Z
+            yaw_cur = math.atan2(cur_R[1,0], cur_R[0,0])
+            yaw_err = wrap_pi(yaw_cur - des_yaw)
+            w = np.array([0.0, 0.0, -self.cfg.kp_yaw * yaw_err])
+            JrJrT = Jr @ Jr.T + (self.cfg.damping_lambda**2) * np.eye(3)
+            qdot_yaw = Jr.T @ np.linalg.solve(JrJrT, w)
 
         qdot = qdot_pos + N @ (z + qdot_yaw)
         return qdot

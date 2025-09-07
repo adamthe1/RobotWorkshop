@@ -77,9 +77,17 @@
             contype="0" conaffinity="0"/>
     </body>
             <!-- ==================== ROBOT 1 SCENE ==================== -->
-    
     <!-- Robot 1 -->
-    <body name="robot1" pos="0 0.2 0">
+    <!-- Pedestal for robot 1 -->
+      <body name="pedestal1" pos="0.1 0.0 0">
+        <geom type="box"
+              size="0.2 0.2 0.1"
+              material="pedestal_blue"
+              contype="1" conaffinity="1" density="500"/>
+      </body>
+
+    <!-- Robot 1 -->
+    <body name="robot1" pos="0.1 0.0 0.1">
       <attach model="panda" body="link0" prefix="panda0_"/>
     </body>
 

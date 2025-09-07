@@ -30,12 +30,10 @@ class EpisodeActionMapper:
 
     def __init__(self, robot_types: List[str]):
         self.logger = get_logger('EpisodeActionMapper')
-        self.types_to_paths = {
-            "FrankaPanda": {"pour beer": "finetuning/example_pouring/data/chunk-000/episode_000001.parquet"},
-            "SO101": {"pour beer": "finetuning/so101_finetune/data/chunk-000/episode_000001.parquet"},
-            # Add more robot types and their episode paths here
-        }
         self.main_dir = os.getenv("MAIN_DIRECTORY", "/home/adam/Documents/coding/autonomous")
+        mission_episode_paths = os.path.join(self.main_dir, "finetuning/mission_episodes")
+        self.types_to_paths = self.load_mission_paths(robot_types, mission_episode_paths)
+        
         self.slicing = 1
         self.loop = False
         self.speed = 6.0
@@ -55,6 +53,25 @@ class EpisodeActionMapper:
 
         self.robot_id_dict = {}
 
+    def load_mission_paths(self, robot_types: List[str], base_path: str) -> Dict[str, Dict[str, str]]:
+        """Load mapping of robot types to missions to episode parquet paths."""
+        type_to_missions = {}
+        for rt in robot_types:
+            rt_path = os.path.join(base_path, rt)
+            if not os.path.isdir(rt_path):
+                self.logger.warning(f"Robot type directory not found: {rt_path}")
+                continue
+            missions = {}
+            for mission in SUPPORTED_MISSIONS:
+                mission_file = f"{mission}.parquet"
+                mission_path = os.path.join(rt_path, mission_file)
+                if not os.path.isfile(mission_path):
+                    self.logger.warning(f"Mission file not found for {rt}: {mission_path}")
+                    continue
+                missions[mission] = mission_path
+            if missions:
+                type_to_missions[rt] = missions
+        return type_to_missions
     
     def _load_episode(self, p: str) -> None:
         if not os.path.isfile(p):

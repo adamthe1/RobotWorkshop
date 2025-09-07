@@ -259,6 +259,6 @@
     <general class="panda" name="actuator5" joint="joint5" gainprm="2000" biasprm="0 -2000 -200" forcerange="-12 12"/>
     <general class="panda" name="actuator6" joint="joint6" gainprm="2000" biasprm="0 -2000 -200" forcerange="-12 12" ctrlrange="-0.0175 3.7525"/>
     <general class="panda" name="actuator7" joint="joint7" gainprm="2000" biasprm="0 -2000 -200" forcerange="-40 40"/>
-    <position class="panda" name="actuator8" tendon="split" ctrlrange="0 0.05" kp="2000" kv="20" forcerange="-300 300"/>
+    <position class="panda" name="actuator8" tendon="split" ctrlrange="0 0.06" kp="2000" kv="20" forcerange="-300 300"/>
   </actuator>
 </mujoco>
