@@ -1,34 +1,46 @@
 VISION_WEIGHTS_PATH = '/path/to/your/weights.pth'
-MISSION_QUEUE_SIZE = 6  # Example size, adjust as needed
+MISSION_QUEUE_SIZE = 6  # Max jobs in queue
 
-MUJOCO_HOST = 'localhost'
-MUJOCO_PORT = 8600  # Default port for MuJoCo server
+# Rendering and system
 USE_GPU_WSL = 1
+LOG_NO_CONSOLE = 1
+NO_VIEWER = 0
 
+# Paths
 MAIN_DIRECTORY = '/main/directory/'
-USE_DUPLICATING_PATH = 1 # if to use the new duplicating mujoco
+USE_DUPLICATING_PATH = 1  # Use duplicating MuJoCo scene generator
 MUJOCO_MODEL_PATH = ${MAIN_DIRECTORY}/franka_emika_panda/scene_bar_new_ziv.xml
 CONTROL_ROBOT_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene.xml
 LOAD_SAVED_STATE = 1
-# franka_emika_panda/scene_bar_new_ziv.xml
 
 # Robot configuration
 FRANKA_PANDA_COUNT = 2
 SO101_COUNT = 0
 
-
+# Networking (README defaults)
+MUJOCO_HOST = 'localhost'
+MUJOCO_PORT = 8600
 QUEUE_HOST = 'localhost'
 QUEUE_PORT = 8700
-
 LOGGING_HOST = 'localhost'
 LOGGING_PORT = 8400
-LOG_NO_CONSOLE = 1
-
-NO_VIEWER = 0
-
 BRAIN_HOST = 'localhost'
 BRAIN_PORT = 8900
-REPLAY_EPISODE_PATH=${MAIN_DIRECTORY}/finetuning/example_pouring/data/chunk-000/episode_000001.parquet
 
+# Replay (legacy single-file)
+REPLAY_EPISODE_PATH = ${MAIN_DIRECTORY}/finetuning/example_pouring/data/chunk-000/episode_000001.parquet
+
+# Advanced replay/state controls
+CONTROL_HZ = 60
+REPLAY_SPEED = 1.0
+REPLAY_USE_OBS_AS_ACTION = 0
+REPLAY_OBS_FIRST_N = 7
+REPLAY_SAVED_STATE_DIR = ''  # Optional override for saved state dir
+RESET_HOLD_SECONDS = 2.0
+NO_CAMERA_IN_STATE = 0
+USE_TEST_MAPPER = 0
+USE_REPLAY_MAPPER = 0
+
+# API keys
 OPENAI_API_KEY = 'api-key'
 GLM_API_KEY = 'api-key'

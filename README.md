@@ -117,13 +117,16 @@ This launches:
 python3 finetuning/control_robot_solid.py
 ```
 
+- See `finetuning/README.md` for full teleop controls, recording workflow, saved-state behavior, and dataset details.
+
 This allows you to:
 - Control robots via keyboard
 - Record state-action pairs
 - Save data in LeRobot-compatible format
 
 ### Replaying Policies
-Set `REPLAY_EPISODE_PATH` to your recorded episode file and run the simulation. The brain server will replay actions from the episode.
+Preferred: place mission datasets under `finetuning/mission_episodes/<robot_type>/<mission>/<sub_mission>.parquet`.
+Legacy: you can set `REPLAY_EPISODE_PATH` to a single episode parquet to test policy replay.
 
 ## System Architecture
 
@@ -145,3 +148,22 @@ The system automatically detects and resolves port conflicts by offering to kill
 
 ### Multiple Robots
 Increase `FRANKA_PANDA_COUNT` and `SO101_COUNT` to add more robots. GPU rendering is recommended for 3+ robots.
+
+## Adding Missions
+
+- Define missions and sub-missions in `control_panel/missions.py` (`SUPPORTED_MISSIONS`) and assign per robot in `SUPPORTED_MISSIONS_PER_ROBOT`.
+- Provide datasets under `finetuning/mission_episodes/<robot_type>/<mission>/<sub_mission>.parquet` where `<sub_mission>` file names match each entry you added.
+- The replayer loads actions exactly as recorded. If a reset step like `reset_before_new_mission` has no parquet, a synthetic reset sequence is generated and held for a configurable duration.
+- Optional: add `obs_to_action.json` alongside parquet to map `observation.state` indices into actions when `REPLAY_USE_OBS_AS_ACTION=1`.
+
+## Additional Environment Variables
+
+Beyond the core settings above, these control replay and state handling (add to `.env` as needed):
+- CONTROL_HZ: Control/replay loop frequency in Hz (default 60).
+- REPLAY_SPEED: Time-warp without interpolation (default 1.0; >1 skips frames, <1 repeats frames).
+- REPLAY_USE_OBS_AS_ACTION: Use `observation.state` to build actions (0/1; default 0).
+- REPLAY_OBS_FIRST_N: When no sidecar file exists, number of initial obs indices to treat as joints (default 7).
+- REPLAY_SAVED_STATE_DIR: Override directory for saved-state `.npz` used for synthetic resets.
+- RESET_HOLD_SECONDS: Duration to hold reset targets (default 2.0 seconds).
+- NO_CAMERA_IN_STATE: Exclude camera data from saved state if set (0/1; default 0).
+- USE_TEST_MAPPER / USE_REPLAY_MAPPER: Optional brain mappers toggles (0/1; default 0).
