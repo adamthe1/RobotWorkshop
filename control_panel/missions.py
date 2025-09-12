@@ -13,4 +13,15 @@ SUPPORTED_MISSIONS = {
         "put down bottle",
         "reset before new mission"
     ],
+
+    "placeCupOnBar": [
+        "pick_up_cup",
+        "move_cup_to_bar",
+        "put_down_cup",
+        "reset_before_new_mission"
+    ],
+
+    "testC": [
+        "tst"
+    ]
 }

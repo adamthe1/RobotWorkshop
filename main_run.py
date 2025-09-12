@@ -114,7 +114,13 @@ class MainOrchestrator:
                 packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Action sent, result: {packet}")
 
-                time.sleep(0.1)
+                # Align loop with simulation/control rate for precise replay
+                # Default to 60 Hz if not set
+                try:
+                    hz = float(os.getenv("CONTROL_HZ", "60"))
+                except Exception:
+                    hz = 60.0
+                time.sleep(max(0.0, 1.0/ hz))
                 
             except Exception as e:
                 self.logger.error(f"Error in inference loop: {e}")

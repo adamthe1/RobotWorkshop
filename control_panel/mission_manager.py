@@ -83,6 +83,11 @@ class MissionManager:
         
         packet.mission_status = 'ongoing'
         
+        # Special-case: auto-reset mission is driven entirely by the policy/mapper
+        if packet.mission == "__auto_reset__":
+            # Do not attempt to assign submissions; just let the brain drive reset
+            return packet
+
         if packet.submission is None:
             packet = self.get_next_submission(packet)
             self.logger.debug(f"adding first submission to packet {packet.submission} for mission {packet.mission}")
@@ -94,8 +99,13 @@ class MissionManager:
 
         if result['done']:
             if self.is_last_submission(packet):
-                packet.mission_status = 'completed'
-                return self.reset_packet(packet)
+                # After final submission of real mission, switch to auto-reset mission
+                self.logger.info(f"Mission {packet.mission} submissions finished; starting auto-reset before queueing robot {packet.robot_id}")
+                packet.mission = "__auto_reset__"
+                packet.submission = None
+                packet.submission_status = None
+                packet.mission_status = 'ongoing'
+                return packet
             else:
                 packet = self.get_next_submission(packet)
                 return packet
@@ -127,5 +137,4 @@ class MissionManager:
     def get_robot_from_queue(self):
         """Find a free robot that is not currently processing a mission."""
         return self.queue_client.get_robot_from_queue()
-
 

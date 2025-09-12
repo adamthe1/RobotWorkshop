@@ -25,7 +25,6 @@
             texrepeat="1 1"
             reflectance="0.2" shininess="0.5" specular="1"/>
 
-       
     <!-- Red liquid -->
     <material name="liquid_red" rgba="0.6 0.0 0.0 0.9" reflectance="0.2" shininess="0.3" specular="0.4"/>
 
@@ -75,8 +74,8 @@
             contype="0" conaffinity="0"/>
     </body>
             <!-- ==================== ROBOT 1 SCENE ==================== -->
-    <!-- Robot 1 -->
-    <body name="robot1" pos="0.05 -0.2 0">
+  
+    <body name="robot1" pos="0.1 -0.1 0.05">
       <attach model="panda" body="link0" prefix="panda0_"/>
     </body>
 
@@ -86,21 +85,21 @@
     </body>
 
     <!-- Table for robot 1 -->
-    <body name="table1" pos="0.8 0.0 0.3">
-      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    <body name="table1" pos="0.8 0.0 0.35">
+      <geom type="box" size="0.3 1.0 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="table2" pos="0.3 0.6 0.3">
+
+    <body name="table2" pos="0.3 -0.6 0.3">
       <geom type="box" size="0.2 0.2 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="table3" pos="0.3 -0.6 0.3">
+    <body name="table3" pos="0.3 0.6 0.3">
       <geom type="box" size="0.2 0.2 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
-
 
     <!-- Small center coaster on the table (reference for cups) -->
-    <body name="center_coaster1" pos="0.8 0.0 0.6519999999999999">
+    <body name="center_coaster1" pos="0.7 0.0 0.6519999999999999">
       <geom type="cylinder" size="0.045 0.002" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
@@ -112,7 +111,7 @@
 
       <geom name="beer_glass_base1"
         type="box"
-        size="0.05 0.05 0.0001"    
+        size="0.05 0.05 0.0"    
         pos="0 0 -0.10"          
         material="glass_mat"
         mass="0.6"               

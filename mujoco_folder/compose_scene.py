@@ -62,9 +62,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
             texrepeat="1 1"
             reflectance="0.2" shininess="0.5" specular="1"/>
 
-       <!-- Blue pedestal material -->
-    <material name="pedestal_blue" rgba="0 0 1 1" reflectance="0.1" shininess="0.2" specular="0.2"/>
-
+       
     <!-- Red liquid -->
     <material name="liquid_red" rgba="0.6 0.0 0.0 0.9" reflectance="0.2" shininess="0.3" specular="0.4"/>
 
@@ -129,22 +127,13 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
                 xml_content += f'''
             <!-- ==================== ROBOT {i} SCENE ==================== -->
     <!-- Robot {i} -->
-    <!-- Pedestal for robot {i} -->
-      <body name="pedestal{i}" pos="{pos_with_offset(0.1, 0, 0, j)}">
-        <geom type="box"
-              size="0.2 0.2 0.1"
-              material="pedestal_blue"
-              contype="1" conaffinity="1" density="500"/>
-      </body>
-
-    <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0.1, 0, 0.1, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.05 ,-0.2 ,0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
     </body>'''
             else:
                 xml_content += f'''
               <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0, 0, 0, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.05 ,-0.2 ,0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
     </body>'''
 
@@ -153,14 +142,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
             <!-- ==================== ROBOT {i} SCENE ==================== -->
 
     <!-- Robot {i} -->
-    <!-- Pedestal for robot {i} -->
-      <body name="pedestal{i}" pos="{pos_with_offset(0.3, 0, 0, j)}">
-        <geom type="box"
-              size="0.1 0.1 0.65"
-              material="pedestal_blue"
-              contype="1" conaffinity="1" density="500"/>
-      </body>
-    <body name="robot{i}" pos="{pos_with_offset(0.3, 0, 0.65, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.05 ,-0.2 ,0, j)}">
       <attach model="so101" body="base" prefix="{prefix}"/>
     </body>'''
             
@@ -186,6 +168,8 @@ def get_scene1(i, j, pos_with_offset):
     coaster_h = 0.002                 # thin coaster halfheight
     right_ped_xy = (0.8, 0.3)        # bottles pedestal on table (x,y)
     left_ped_xy  = (0.8, -0.3)       # cups pedestal on table (x,y)
+    beer_glass_pos=(0.25, -0.5, 0.872)  # beer glass position on table
+    beer_base=(0, 0, -0.10)    # beer glass base size (x,y,z)
     return f'''
 
     <!-- Bar wall for robot {i} -->
@@ -198,39 +182,42 @@ def get_scene1(i, j, pos_with_offset):
       <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <!-- Small pedestals on the table -->
-    <body name="pedestal_left{i}" pos="{pos_with_offset(left_ped_xy[0], left_ped_xy[1], ped_top_z, j)}">
-      <geom type="box" size="0.15 0.15 {ped_h}" material="pedestal_blue" contype="1" conaffinity="1" density="800"/>
-      <!-- Coasters on left pedestal (cups) -->
+    <body name="table{1+i}" pos="{pos_with_offset(0.3, 0.6, 0.3, j)}">
+      <geom type="box" size="0.2 0.2 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="pedestal_right{i}" pos="{pos_with_offset(right_ped_xy[0], right_ped_xy[1], ped_top_z, j)}">
-      <geom type="box" size="0.2 0.2 {ped_h}" material="pedestal_blue" contype="1" conaffinity="1" density="800"/>
-      <!-- Two bottle coasters on right pedestal -->
-      <geom type="cylinder" pos="-0.06 0 {coaster_h + 0.0}" size="0.055 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
-      <geom type="cylinder" pos=" 0.06 0 {coaster_h + 0.0}" size="0.055 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
+    <body name="table{2+i}" pos="{pos_with_offset(0.3, -0.6, 0.3, j)}">
+      <geom type="box" size="0.2 0.2 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
+
 
     <!-- Small center coaster on the table (reference for cups) -->
     <body name="center_coaster{i}" pos="{pos_with_offset(0.8, 0.0, table_top_z + coaster_h, j)}">
       <geom type="cylinder" size="0.045 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
-    <!-- Wine glass for robot {i} (left pedestal, rear coaster) -->
-    <body name="Wine_glass{i}" pos="{pos_with_offset(left_ped_xy[0], left_ped_xy[1]-0.06, ped_top_z + 0.15 + coaster_h, j)}" euler="89.55 90 0">
-      <joint name="wine_glass_free{i}" type="free"/>
-      <geom type="mesh" mesh="wine_glass_mesh" material="glass_mat" density="1200" contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
-    </body>
+    <body name="beer_glass{i}" pos="{pos_with_offset(beer_glass_pos[0], beer_glass_pos[1], beer_glass_pos[2], j)}">
+      <joint name="beer_glass_free{i}" type="free" />
+      <!-- Outer glass (square / box shape) -->
+      <geom type="box" size="0.03 0.03 0.10" material="glass_mat" contype="1" conaffinity="1" friction="5.408 0.2366 0.04225" condim="6"/>
 
-    <!-- Big beer glass for robot {i} (left pedestal, front coaster) -->
-    <body name="beer_glass{i}" pos="{pos_with_offset(left_ped_xy[0], left_ped_xy[1]+0.06, ped_top_z + 0.16 + coaster_h, j)}">
-      <joint name="beer_glass_free{i}" type="free"/>
-      <!-- Outer glass -->
-      <geom type="cylinder" size="0.05 0.12" material="glass_mat" contype="1" conaffinity="1" friction="2.0 0.05 0.005" condim="6"/>
+
+      <geom name="beer_glass_base{i}"
+        type="box"
+        size="0.05 0.05 0.0001"    
+        pos="0 0 -0.10"          
+        material="glass_mat"
+        mass="0.6"               
+        contype="1"
+        conaffinity="1"
+        condim="6"
+        friction="5.0 0.2 0.05"  
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1" />
     </body>
     
     <!-- Green square bottle (right pedestal, right coaster) -->
-    <body name="green_bottle_body{i}" pos="{pos_with_offset(right_ped_xy[0], right_ped_xy[1]+0.06, ped_top_z + 0.14 + coaster_h, j)}">
+    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.25, 0.5, 0.952, j)}">
       <joint name="green_bottle_free{i}" type="free"/>
       <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -241,7 +228,7 @@ def get_scene1(i, j, pos_with_offset):
     </body>
 
     <!-- Yellow square bottle (right pedestal, left coaster) -->
-    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(right_ped_xy[0], right_ped_xy[1]-0.06, ped_top_z + 0.14 + coaster_h, j)}">
+    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.4, 0.5, 0.952, j)}">
       <joint name="yellow_bottle_free{i}" type="free"/>
       <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -280,15 +267,6 @@ def get_scene2(i, j, pos_with_offset):
   <geom type="cylinder" pos="0 0 0.085" size="0.03 0.08" material="liquid_red" density="500" contype="1" conaffinity="1" friction="2.0 0.08 0.008"/>
 </body>
 
-<!-- Wine glass for robot {i} -->
-<body name="Wine_glass{i}" pos="{pos_with_offset(0.6, 0.3, 0.9, j)}" euler="89.55 90 0">
-  <joint name="wine_glass_free{i}" type="free"/>
-  <geom type="mesh"
-        mesh="wine_glass_mesh"
-        material="glass_mat"
-        density="1200"
-        contype="1" conaffinity="1" friction="3.0 0.08 0.008"/>
-</body>
 
 <!-- Green square bottle for robot {i} -->
 <body name="green_bottle_body{i}" pos="{pos_with_offset(0.6, 0.05, 0.79, j)}">
@@ -346,7 +324,7 @@ def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
 if __name__ == "__main__":
 
     # Example 4: Five robots with tight spacing
-    save_xml_file("/home/adam/Documents/coding/autonomous/xml_robots/panda_scene_one_robot_franka.xml", y_offset=0.0, robot_spacing=2.5)
-    
+    save_xml_file("/root/RobotWorkshop/tests/test1.xml", y_offset=0.0, robot_spacing=2.5)
+
     # Show layout summary for the multi-robot example
     
