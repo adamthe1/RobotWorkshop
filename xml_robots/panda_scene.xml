@@ -87,7 +87,7 @@
 
     <!-- Table for robot 1 (raised +0.1) -->
     <body name="table1" pos="0.8 0.0 0.3">
-      <geom type="box" size="0.3 0.9 0.45" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+      <geom type="box" size="0.3 0.9 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
     <body name="table_2_1" pos="0.3 0.6 0.3">
@@ -100,11 +100,11 @@
 
 
     <!-- Small center coaster on the table (reference for cups) -->
-    <body name="center_coaster1" pos="0.6 0.0 0.752">
-      <geom type="cylinder" size="0.045 0.002" material="coaster_mat" contype="0" conaffinity="0"/>
+    <body name="center_coaster1" pos="0.63 0.0 0.8500000000000001">
+      <geom type="cylinder" size="0.07 0.01" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
-    <body name="beer_glass1" pos="0.25 -0.5 0.855">
+    <body name="beer_glass1" pos="0.25 -0.5 0.9500000000000001">
       <joint name="beer_glass_free1" type="free" />
       <!-- Outer glass (square / box shape) -->
       <geom type="box"
@@ -132,7 +132,7 @@
     </body>
     
     <!-- Green square bottle (right pedestal, right coaster) -->
-    <body name="green_bottle_body1" pos="0.25 0.5 0.89">
+    <body name="green_bottle_body1" pos="0.25 0.5 0.9500000000000001">
       <joint name="green_bottle_free1" type="free"/>
       <geom name="green_bottle_body1" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -143,7 +143,7 @@
     </body>
 
     <!-- Yellow square bottle (right pedestal, left coaster) -->
-    <body name="yellow_bottle_body1" pos="0.4 0.5 0.89">
+    <body name="yellow_bottle_body1" pos="0.4 0.5 0.9500000000000001">
       <joint name="yellow_bottle_free1" type="free"/>
       <geom name="yellow_bottle_body1" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />

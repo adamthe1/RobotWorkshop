@@ -162,39 +162,40 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
 
 def get_scene1(i, j, pos_with_offset):
      # Just before the per-robot loop, add handy heights/positions for table/pedestals/coasters:
-    table_top_z = 0.3 + 0.45          # main table top raised by +0.1 (now 0.75)
-    ped_h = 0.06                      # small pedestal halfheight
+    table_top_z = 0.55          # main table top raised by +0.1 (now 0.75)
+    initial_z = 0.3
+    ped_h = 0.0                     # small pedestal halfheight
     ped_top_z = table_top_z + ped_h   # pedestal top z (center of pedestal body)
-    coaster_h = 0.002                 # thin coaster halfheight
-    right_ped_xy = (0.8, 0.3)        # bottles pedestal on table (x,y)
-    left_ped_xy  = (0.8, -0.3)       # cups pedestal on table (x,y)
+    coaster_h =  0.01                 # thin coaster halfheight
     # Beer glass: add 1mm clearance so it settles without a jump
-    beer_glass_pos = (0.25, -0.5, table_top_z + 0.106)
-    beer_base = (0, 0, -0.10)    # beer glass base size (x,y,z)
+    beer_glass_pos = (0.13, -0.5, initial_z+table_top_z+0.1)
+    green_bottle_pos = (0.05, 0.5, initial_z+table_top_z+0.1)
+    yellow_bottle_pos = (0.2, 0.5, initial_z+table_top_z+0.1)
+
     return f'''
 
     <!-- Bar wall for robot {i} -->
-    <body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, 0.4, j)}">
+    <body name="bar_wall{i}" pos="{pos_with_offset(-1.0, 0.0, initial_z+0.1, j)}">
       <geom type="box" size="0.1 1.0 0.8" material="bar_mat" density="2000" contype="1" conaffinity="1"/>
     </body>
 
     <!-- Table for robot {i} (raised +0.1) -->
-    <body name="table{i}" pos="{pos_with_offset(0.8, 0.0, 0.3, j)}">
-      <geom type="box" size="0.3 0.9 0.45" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    <body name="table{i}" pos="{pos_with_offset(0.8, 0.0, initial_z, j)}">
+      <geom type="box" size="0.3 0.9 {table_top_z}" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="table_2_{i}" pos="{pos_with_offset(0.3, 0.6, 0.3, j)}">
-      <geom type="box" size="0.2 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    <body name="table_2_{i}" pos="{pos_with_offset(0.2, 0.6, initial_z, j)}">
+      <geom type="box" size="0.3 0.2 {ped_top_z}" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="table_3_{i}" pos="{pos_with_offset(0.3, -0.6, 0.3, j)}">
-      <geom type="box" size="0.2 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    <body name="table_3_{i}" pos="{pos_with_offset(0.2, -0.6, initial_z, j)}">
+      <geom type="box" size="0.3 0.2 {ped_top_z}" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
 
     <!-- Small center coaster on the table (reference for cups) -->
-    <body name="center_coaster{i}" pos="{pos_with_offset(0.63, 0.0, table_top_z + coaster_h  , j)}">
-      <geom type="cylinder" size="0.045 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
+    <body name="center_coaster{i}" pos="{pos_with_offset(0.63, 0.0, initial_z+ table_top_z  , j)}">
+      <geom type="cylinder" size="0.07 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
     <body name="beer_glass{i}" pos="{pos_with_offset(beer_glass_pos[0], beer_glass_pos[1], beer_glass_pos[2], j)}">
@@ -225,9 +226,9 @@ def get_scene1(i, j, pos_with_offset):
     </body>
     
     <!-- Green square bottle (right pedestal, right coaster) -->
-    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.25, 0.5, table_top_z + 0.141, j)}">
+    <body name="green_bottle_body{i}" pos="{pos_with_offset(green_bottle_pos[0], green_bottle_pos[1], green_bottle_pos[2], j)}">
       <joint name="green_bottle_free{i}" type="free"/>
-      <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
+      <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.3"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
       <geom name="green_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
             mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -236,9 +237,9 @@ def get_scene1(i, j, pos_with_offset):
     </body>
 
     <!-- Yellow square bottle (right pedestal, left coaster) -->
-    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.4, 0.5, table_top_z + 0.141, j)}">
+    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(yellow_bottle_pos[0], yellow_bottle_pos[1], yellow_bottle_pos[2], j)}">
       <joint name="yellow_bottle_free{i}" type="free"/>
-      <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
+      <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.3"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
       <geom name="yellow_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
             mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />

@@ -241,13 +241,29 @@ class LeRobotDatasetRecorder:
             )
             self.video_writers[cam_name] = writer
     
-    def record_frame(self, action: np.ndarray, done: bool = False, task_index: int = 0):
-        """Record a single frame of data"""
+    def record_frame(self, action: np.ndarray, done: bool = False, task_index: int = 0,
+                     tick_index: Optional[int] = None, ctrl_hz: Optional[float] = None,
+                     timestamp: Optional[float] = None):
+        """Record a single frame of data
+
+        Args:
+            action: action vector applied for this control tick
+            done: whether this is the terminal frame of the episode
+            task_index: task label index
+            tick_index: optional global tick counter (for deterministic time)
+            ctrl_hz: optional control frequency used with tick_index
+            timestamp: optional explicit timestamp override (seconds since episode start)
+        """
         if not self.is_recording:
             return
-        
-        current_time = time.time()
-        timestamp = current_time - self.episode_start_time
+
+        # Prefer explicit timestamp, else tick-based, else wall-clock
+        if timestamp is None:
+            if tick_index is not None and ctrl_hz and ctrl_hz > 0:
+                timestamp = float(tick_index) / float(ctrl_hz)
+            else:
+                current_time = time.time()
+                timestamp = current_time - self.episode_start_time
         
         # Get robot state (joint positions)
         qpos = self.data.qpos.copy()
@@ -654,6 +670,13 @@ def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData,
     # only the video recording while keeping parquet/meta recording intact.
     config = RecordingConfig()
     config.record_video = bool(record_video)
+    # Align dataset FPS and video FPS to shared CONTROL_HZ for consistent timing
+    try:
+        hz = float(os.getenv("CONTROL_HZ", "60"))
+    except Exception:
+        hz = 60.0
+    config.fps = int(round(hz))
+    config.video_fps = int(round(hz))
     return LeRobotDatasetRecorder(model, data, config)
 
 def add_lerobot_controls(recorder: LeRobotDatasetRecorder, on_key_callback):

@@ -32,7 +32,7 @@ class TeleopConfig:
     z_step: float = 0.01
     kp_pos: float = 12.0
     damping_lambda: float = 0.10
-    ctrl_hz: float = 60.0
+    ctrl_hz: float = 30.0
     subst_steps: int = 2
     target_radius: float = 0.01
     target_rgba: Tuple[float, float, float, float] = (1.0, 0.1, 0.1, 1.0)
@@ -516,6 +516,7 @@ class TeleopApp:
 
         on_key = self.inp_ctrl.install(window)
         # Disable video recording while keeping parquet/meta recording.
+        # Create recorder with FPS derived from CONTROL_HZ
         recorder = create_lerobot_recorder(self.robot.model, self.robot.data, "panda_teleop_dataset", record_video=False)
         # Provide actuator names in the exact recorded order for mapping later
         try:
@@ -530,9 +531,18 @@ class TeleopApp:
         # Track C edge to robustly toggle camera even if callbacks are wrapped
         self._cam_toggle_down = False
 
+        # Override control Hz from env to keep in sync system-wide
+        try:
+            env_hz = float(os.getenv("CONTROL_HZ", str(self.cfg.ctrl_hz)))
+            if env_hz > 0:
+                self.cfg.ctrl_hz = env_hz
+        except Exception:
+            pass
+
         dt_ctrl = 1.0 / self.cfg.ctrl_hz
         last_time = time.time()
         accum = 0.0
+        tick_count = 0  # global control tick counter for deterministic timestamps
 
         print(
             "[INFO] EE site:",
@@ -551,11 +561,7 @@ class TeleopApp:
             substeps = min(self.cfg.subst_steps, int(accum))
             accum -= substeps
 
-            current_action = self.robot.data.ctrl[self.robot.full_arm_act_ids].copy()
-            #print(f"action: {current_action}")
-
-            if recorder.is_recording:
-                recorder.record_frame(action=current_action, done=False)
+            # Note: recording will occur per control substep (tick) after physics step
 
             # Handle camera toggle BEFORE control tick clears one-shot flags.
             # Also detect C key edge in case callbacks are overridden.
@@ -591,8 +597,20 @@ class TeleopApp:
                     self.attached = None
 
             for _ in range(substeps):
+                # Compute and apply control for this tick
                 self._tick_control(dt_ctrl)
+                # Step physics once at control rate
                 mujoco.mj_step(self.robot.model, self.robot.data)
+                # Record exactly once per control tick, after stepping
+                if recorder.is_recording:
+                    current_action = self.robot.data.ctrl[self.robot.full_arm_act_ids].copy()
+                    recorder.record_frame(
+                        action=current_action,
+                        done=False,
+                        tick_index=tick_count,
+                        ctrl_hz=self.cfg.ctrl_hz
+                    )
+                tick_count += 1
 
             cam_name = self.cam_names[self.cam_index]
 

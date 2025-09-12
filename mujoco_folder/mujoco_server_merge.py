@@ -74,7 +74,11 @@ class MuJoCoServer:
         self.rgb_height = rgb_height
         self.viewer     = None
 
-        self.control_hz = 60  # Control frequency in Hz
+        # Control frequency in Hz (shared across system via CONTROL_HZ)
+        try:
+            self.control_hz = float(os.getenv("CONTROL_HZ", "60"))
+        except Exception:
+            self.control_hz = 60.0
 
         self.no_viewer = int(os.getenv("NO_VIEWER", 0)) 
         self.logger.info(f"MuJoCo server initialized on {self.host}:{self.port} with no_viewer={self.no_viewer}")
