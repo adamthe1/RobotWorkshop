@@ -183,20 +183,20 @@ def get_scene1(i, j, pos_with_offset):
     </body>
 
     <body name="table{1+i}" pos="{pos_with_offset(0.3, 0.6, 0.3, j)}">
-      <geom type="box" size="0.2 0.2 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+      <geom type="box" size="0.2 0.2 0.3" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
     <body name="table{2+i}" pos="{pos_with_offset(0.3, -0.6, 0.3, j)}">
-      <geom type="box" size="0.2 0.2 0.5" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+      <geom type="box" size="0.2 0.2 0.3" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
 
     <!-- Small center coaster on the table (reference for cups) -->
-    <body name="center_coaster{i}" pos="{pos_with_offset(0.8, 0.0, table_top_z + coaster_h, j)}">
+    <body name="center_coaster{i}" pos="{pos_with_offset(0.6, 0.0, table_top_z + coaster_h  , j)}">
       <geom type="cylinder" size="0.045 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
-    <body name="beer_glass{i}" pos="{pos_with_offset(beer_glass_pos[0], beer_glass_pos[1], beer_glass_pos[2], j)}">
+    <body name="beer_glass{i}" pos="{pos_with_offset(beer_glass_pos[0], beer_glass_pos[1], beer_glass_pos[2] + 0.1 , j)}">
       <joint name="beer_glass_free{i}" type="free" />
       <!-- Outer glass (square / box shape) -->
       <geom type="box" size="0.03 0.03 0.10" material="glass_mat" contype="1" conaffinity="1" friction="5.408 0.2366 0.04225" condim="6"/>
@@ -204,10 +204,10 @@ def get_scene1(i, j, pos_with_offset):
 
       <geom name="beer_glass_base{i}"
         type="box"
-        size="0.05 0.05 0.0001"    
-        pos="0 0 -0.10"          
+        size="0.048 0.048 0.005"    
+        pos="0 0 -0.1"          
         material="glass_mat"
-        mass="0.6"               
+        mass="0.02"               
         contype="1"
         conaffinity="1"
         condim="6"
