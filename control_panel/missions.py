@@ -6,6 +6,7 @@ SUPPORTED_MISSIONS = {
         "put down bottle",
         "reset before new mission"
     ],
+    
     "pour margarita": [
         "pick up green bottle",
         "pour bottle into cup",
@@ -25,3 +26,7 @@ SUPPORTED_MISSIONS = {
         "tst"
     ]
 }
+
+SUPPORTED_MISSIONS_PER_ROBOT = {
+    "FrankaPanda": ["placeCupOnBar"],
+    "SO101": ["placeCupOnBar"]}

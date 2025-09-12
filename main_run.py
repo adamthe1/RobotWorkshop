@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 from mujoco_folder.mujoco_server_merge import MujocoClient
 from brain.brain_server import BrainClient
+from control_panel.robot_queue_locks import QueueClient
 from pathlib import Path
 from mujoco_folder.server_manager import ServerManager
 
@@ -155,6 +156,7 @@ class MainOrchestrator:
             self.logger.info(f"Robot list received: {self.robot_list}")
             MissionManager.set_robot_list(self.robot_list)
             BrainClient.set_robot_dict(self.robot_dict)
+            QueueClient.set_robot_dict(self.robot_dict)
 
 
             # Start inference loops for each robot

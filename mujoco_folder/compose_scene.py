@@ -150,7 +150,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
         if use_scene == 1:
             xml_content += get_scene1(i, j, pos_with_offset)
         else:
-          xml_content += get_scene2(i, j, pos_with_offset)
+            xml_content += get_scene2(i, j, pos_with_offset)
 
     xml_content += '''
 
@@ -182,11 +182,11 @@ def get_scene1(i, j, pos_with_offset):
       <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="table{1+i}" pos="{pos_with_offset(0.3, 0.6, 0.3, j)}">
+    <body name="table_2_{i}" pos="{pos_with_offset(0.3, 0.6, 0.3, j)}">
       <geom type="box" size="0.2 0.2 0.3" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
-    <body name="table{2+i}" pos="{pos_with_offset(0.3, -0.6, 0.3, j)}">
+    <body name="table_3_{i}" pos="{pos_with_offset(0.3, -0.6, 0.3, j)}">
       <geom type="box" size="0.2 0.2 0.3" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 

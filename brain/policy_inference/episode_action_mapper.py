@@ -170,7 +170,7 @@ class EpisodeActionMapper:
                 # Heuristic: take first N qpos as robot joints
                 N = int(os.getenv('REPLAY_OBS_FIRST_N', '7'))
                 idxs = list(range(N))
-            # Build frames
+            # Build framesbu
             filtered: List[np.ndarray] = []
             for row in obs:
                 arr = np.asarray(row, dtype=float).ravel()
