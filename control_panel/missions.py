@@ -1,9 +1,7 @@
 SUPPORTED_MISSIONS = {
     "pour beer": [
-        "pick up yellow bottle",
-        "pour bottle into cup",
-        "stop pouring bottle",
-        "put down bottle",
+        "place_cup_on_bar",
+        "pour_beer_bottle",
         "reset before new mission"
     ],
     
@@ -16,9 +14,7 @@ SUPPORTED_MISSIONS = {
     ],
 
     "placeCupOnBar": [
-        "pick_up_cup",
-        "move_cup_to_bar",
-        "put_down_cup",
+        "place_cup_on_bar",
         "reset_before_new_mission"
     ],
 
@@ -28,5 +24,5 @@ SUPPORTED_MISSIONS = {
 }
 
 SUPPORTED_MISSIONS_PER_ROBOT = {
-    "FrankaPanda": ["placeCupOnBar", "testC"],
+    "FrankaPanda": ["placeCupOnBar", "testC", "pour beer"],
     "SO101": ["placeCupOnBar"]}
