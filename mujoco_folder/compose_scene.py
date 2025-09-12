@@ -168,8 +168,8 @@ def get_scene1(i, j, pos_with_offset):
     coaster_h = 0.002                 # thin coaster halfheight
     right_ped_xy = (0.8, 0.3)        # bottles pedestal on table (x,y)
     left_ped_xy  = (0.8, -0.3)       # cups pedestal on table (x,y)
-    # Beer glass: set so base (0.005 thick, at -0.1) rests on table
-    beer_glass_pos = (0.25, -0.5, table_top_z + 0.105)
+    # Beer glass: add 1mm clearance so it settles without a jump
+    beer_glass_pos = (0.25, -0.5, table_top_z + 0.106)
     beer_base = (0, 0, -0.10)    # beer glass base size (x,y,z)
     return f'''
 
@@ -193,7 +193,7 @@ def get_scene1(i, j, pos_with_offset):
 
 
     <!-- Small center coaster on the table (reference for cups) -->
-    <body name="center_coaster{i}" pos="{pos_with_offset(0.6, 0.0, table_top_z + coaster_h  , j)}">
+    <body name="center_coaster{i}" pos="{pos_with_offset(0.63, 0.0, table_top_z + coaster_h  , j)}">
       <geom type="cylinder" size="0.045 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
@@ -225,7 +225,7 @@ def get_scene1(i, j, pos_with_offset):
     </body>
     
     <!-- Green square bottle (right pedestal, right coaster) -->
-    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.25, 0.5, table_top_z + 0.14, j)}">
+    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.25, 0.5, table_top_z + 0.141, j)}">
       <joint name="green_bottle_free{i}" type="free"/>
       <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -236,7 +236,7 @@ def get_scene1(i, j, pos_with_offset):
     </body>
 
     <!-- Yellow square bottle (right pedestal, left coaster) -->
-    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.4, 0.5, table_top_z + 0.14, j)}">
+    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.4, 0.5, table_top_z + 0.141, j)}">
       <joint name="yellow_bottle_free{i}" type="free"/>
       <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
