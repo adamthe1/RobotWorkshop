@@ -127,13 +127,13 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
                 xml_content += f'''
             <!-- ==================== ROBOT {i} SCENE ==================== -->
     <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0.05 ,-0.2 ,0, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.05 ,0 ,0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
     </body>'''
             else:
                 xml_content += f'''
               <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0.05 ,-0.2 ,0, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.05 ,0 ,0, j)}">
       <attach model="panda" body="link0" prefix="{prefix}"/>
     </body>'''
 
@@ -162,14 +162,15 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
 
 def get_scene1(i, j, pos_with_offset):
      # Just before the per-robot loop, add handy heights/positions for table/pedestals/coasters:
-    table_top_z = 0.3 + 0.35          # table body z + halfheight
+    table_top_z = 0.3 + 0.45          # main table top raised by +0.1 (now 0.75)
     ped_h = 0.06                      # small pedestal halfheight
     ped_top_z = table_top_z + ped_h   # pedestal top z (center of pedestal body)
     coaster_h = 0.002                 # thin coaster halfheight
     right_ped_xy = (0.8, 0.3)        # bottles pedestal on table (x,y)
     left_ped_xy  = (0.8, -0.3)       # cups pedestal on table (x,y)
-    beer_glass_pos=(0.25, -0.5, 0.872)  # beer glass position on table
-    beer_base=(0, 0, -0.10)    # beer glass base size (x,y,z)
+    # Beer glass: set so base (0.005 thick, at -0.1) rests on table
+    beer_glass_pos = (0.25, -0.5, table_top_z + 0.105)
+    beer_base = (0, 0, -0.10)    # beer glass base size (x,y,z)
     return f'''
 
     <!-- Bar wall for robot {i} -->
@@ -177,17 +178,17 @@ def get_scene1(i, j, pos_with_offset):
       <geom type="box" size="0.1 1.0 0.8" material="bar_mat" density="2000" contype="1" conaffinity="1"/>
     </body>
 
-    <!-- Table for robot {i} -->
+    <!-- Table for robot {i} (raised +0.1) -->
     <body name="table{i}" pos="{pos_with_offset(0.8, 0.0, 0.3, j)}">
-      <geom type="box" size="0.3 0.9 0.35" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+      <geom type="box" size="0.3 0.9 0.45" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
     <body name="table_2_{i}" pos="{pos_with_offset(0.3, 0.6, 0.3, j)}">
-      <geom type="box" size="0.2 0.2 0.3" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+      <geom type="box" size="0.2 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
     <body name="table_3_{i}" pos="{pos_with_offset(0.3, -0.6, 0.3, j)}">
-      <geom type="box" size="0.2 0.2 0.3" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+      <geom type="box" size="0.2 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
     </body>
 
 
@@ -196,10 +197,17 @@ def get_scene1(i, j, pos_with_offset):
       <geom type="cylinder" size="0.045 {coaster_h}" material="coaster_mat" contype="0" conaffinity="0"/>
     </body>
 
-    <body name="beer_glass{i}" pos="{pos_with_offset(beer_glass_pos[0], beer_glass_pos[1], beer_glass_pos[2] + 0.1 , j)}">
+    <body name="beer_glass{i}" pos="{pos_with_offset(beer_glass_pos[0], beer_glass_pos[1], beer_glass_pos[2], j)}">
       <joint name="beer_glass_free{i}" type="free" />
       <!-- Outer glass (square / box shape) -->
-      <geom type="box" size="0.03 0.03 0.10" material="glass_mat" contype="1" conaffinity="1" friction="5.408 0.2366 0.04225" condim="6"/>
+      <geom type="box"
+        size="0.03 0.03 0.10"
+        material="glass_mat"
+        mass="0.35"
+        contype="65535" conaffinity="65535" condim="6"
+        friction="5.8 0.25 0.05"
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1"/>
 
 
       <geom name="beer_glass_base{i}"
@@ -207,17 +215,17 @@ def get_scene1(i, j, pos_with_offset):
         size="0.048 0.048 0.005"    
         pos="0 0 -0.1"          
         material="glass_mat"
-        mass="0.02"               
-        contype="1"
-        conaffinity="1"
+        mass="0.06"               
+        contype="65535"
+        conaffinity="65535"
         condim="6"
-        friction="5.0 0.2 0.05"  
+        friction="5.5 0.22 0.05"  
         solimp="0.95 0.995 0.0005"
         solref="0.004 1" />
     </body>
     
     <!-- Green square bottle (right pedestal, right coaster) -->
-    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.25, 0.5, 0.952, j)}">
+    <body name="green_bottle_body{i}" pos="{pos_with_offset(0.25, 0.5, table_top_z + 0.14, j)}">
       <joint name="green_bottle_free{i}" type="free"/>
       <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -228,7 +236,7 @@ def get_scene1(i, j, pos_with_offset):
     </body>
 
     <!-- Yellow square bottle (right pedestal, left coaster) -->
-    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.4, 0.5, 0.952, j)}">
+    <body name="yellow_bottle_body{i}" pos="{pos_with_offset(0.4, 0.5, table_top_z + 0.14, j)}">
       <joint name="yellow_bottle_free{i}" type="free"/>
       <geom name="yellow_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.5"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
@@ -324,7 +332,8 @@ def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
 if __name__ == "__main__":
 
     # Example 4: Five robots with tight spacing
-    save_xml_file("/root/RobotWorkshop/tests/test1.xml", y_offset=0.0, robot_spacing=2.5)
+    pwd = os.getenv("MAIN_DIRECTORY", "/root/RobotWorkshop")
+    save_xml_file(f"{pwd}/xml_robots/panda_scene_one_robot_franka.xml", y_offset=0.0, robot_spacing=2.5)
 
     # Show layout summary for the multi-robot example
     
