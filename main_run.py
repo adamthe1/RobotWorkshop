@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 import os
 from mujoco_folder.mujoco_server_merge import MujocoClient
 from brain.brain_server import BrainClient
+from control_panel.robot_queue_locks import QueueClient
 from pathlib import Path
 from mujoco_folder.server_manager import ServerManager
 
@@ -114,7 +115,13 @@ class MainOrchestrator:
                 packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Action sent, result: {packet}")
 
-                time.sleep(0.1)
+                # Align loop with simulation/control rate for precise replay
+                # Default to 60 Hz if not set
+                try:
+                    hz = float(os.getenv("CONTROL_HZ", "60"))
+                except Exception:
+                    hz = 60.0
+                time.sleep(max(0.0, 1.0/ hz))
                 
             except Exception as e:
                 self.logger.error(f"Error in inference loop: {e}")
@@ -149,6 +156,7 @@ class MainOrchestrator:
             self.logger.info(f"Robot list received: {self.robot_list}")
             MissionManager.set_robot_list(self.robot_list)
             BrainClient.set_robot_dict(self.robot_dict)
+            QueueClient.set_robot_dict(self.robot_dict)
 
 
             # Start inference loops for each robot

@@ -274,6 +274,9 @@ class LeRobotDatasetRecorder:
             'index': self.global_frame_index,
             'task_index': task_index,
         }
+        # Optionally embed actuator names if provided by caller
+        if hasattr(self, '_actuator_names') and self._actuator_names:
+            frame_data['actuator_names'] = list(self._actuator_names)
         
         # Add done flag if this is the last frame
         if done:
@@ -635,7 +638,8 @@ def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData,
                            dataset_name: str = "panda_teleop", 
                            output_dir: str = f"{os.getenv('MAIN_DIRECTORY')}/finetuning/datasets",
                            robot_prefix: str = "r1_",
-                           use_prefix: bool = True) -> LeRobotDatasetRecorder:
+                           use_prefix: bool = True,
+                           record_video: bool = False) -> LeRobotDatasetRecorder:
     """Create a LeRobot dataset recorder
     
     Args:
@@ -646,7 +650,10 @@ def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData,
         robot_prefix: Prefix for robot (e.g., "r1_", "r2_")
         use_prefix: Whether to use robot prefix for camera names
     """
+    # Create config and respect the record_video flag so callers can disable
+    # only the video recording while keeping parquet/meta recording intact.
     config = RecordingConfig()
+    config.record_video = bool(record_video)
     return LeRobotDatasetRecorder(model, data, config)
 
 def add_lerobot_controls(recorder: LeRobotDatasetRecorder, on_key_callback):

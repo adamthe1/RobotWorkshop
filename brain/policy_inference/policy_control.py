@@ -98,11 +98,18 @@ class PolicyInference:
         reply = {'action': None, 'mission_status': None}
         if policy_name == 'Episode':
             robot_type = self.robot_dict.get(robot_id, None)
-            reply['action'] = policy.next_action(robot_id, robot_type, policy_item.get('prompt', ''))
-            progress = policy.get_progress(robot_id, robot_type, policy_item.get('prompt', ''))
-            self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}% action: {reply['action']}")
-            if progress == 1.0:
-                # only for episode mapper
+            mission_name = policy_item.get('prompt', '')
+            reply['action'] = policy.next_action(robot_id, robot_type, mission_name)
+            progress = policy.get_progress(robot_id, robot_type, mission_name)
+            # If mapper is serving a reset tail, don't mark completed yet
+            reset_pending = False
+            if hasattr(policy, 'is_reset_pending'):
+                try:
+                    reset_pending = policy.is_reset_pending(robot_id, robot_type, mission_name)
+                except Exception:
+                    reset_pending = False
+            self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}% reset_pending={reset_pending} action: {reply['action']}")
+            if progress == 1.0 and not reset_pending:
                 reply['mission_status'] = 'completed'
                 self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
                 policy.reset(robot_id)

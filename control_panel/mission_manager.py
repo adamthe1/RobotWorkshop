@@ -127,5 +127,3 @@ class MissionManager:
     def get_robot_from_queue(self):
         """Find a free robot that is not currently processing a mission."""
         return self.queue_client.get_robot_from_queue()
-
-

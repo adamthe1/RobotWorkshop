@@ -20,7 +20,7 @@ load_dotenv()
 @dataclass
 class TeleopConfig:
     xml_path: str = \
-        os.getenv("CONTROL_ROBOT_PATH", "/home/adam/Documents/coding/autonomous/franka_emika_panda/scene_bar_new_ziv.xml")
+        os.getenv("CONTROL_ROBOT_PATH", "/root/RobotWorkshop/franka_emika_panda/scene_bar_new_ziv.xml")
     ee_site_candidates: List[str] = field(default_factory=lambda: ["ee_site"])
     arm_joint_names: List[str] = field(default_factory=lambda: ["joint1","joint2","joint3","joint4","joint5","joint6","joint7"])
     arm_act_names: List[str] = field(default_factory=lambda: ["actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7"])
@@ -93,12 +93,14 @@ class InputState:
         self.toggle_camera=False
         # Toggle IK (Jacobian following)
         self.toggle_ik=False
+        # Toggle grasp stickiness
+        self.toggle_stickiness=False
         # per-joint jogging flags (+ increases angle, - decreases)
         self.jog_plus = [False]*7
         self.jog_minus = [False]*7
 
     def reset_oneshot(self):
-        self.grip_close=False; self.grip_open=False; self.reset=False; self.reset_xml=False; self.save_state=False; self.toggle_camera=False; self.toggle_ik=False
+        self.grip_close=False; self.grip_open=False; self.reset=False; self.reset_xml=False; self.save_state=False; self.toggle_camera=False; self.toggle_ik=False; self.toggle_stickiness=False
 
 
 class InputController:
@@ -154,6 +156,7 @@ class InputController:
             elif key == glfw.KEY_V and action == glfw.PRESS: self.inp.save_state = True
             elif key == glfw.KEY_C and action == glfw.PRESS: self.inp.toggle_camera = True
             elif key == glfw.KEY_X and action == glfw.PRESS: self.inp.toggle_ik = True
+            elif key == glfw.KEY_S and action == glfw.PRESS: self.inp.toggle_stickiness = True
             # Joint jog bindings: i=0..6 => (1/q), (2/w), (3/e), (4/r), (5/t), (6/y), (7/u)
             # Convention: number increases joint angle, letter decreases
             if   key == glfw.KEY_1: self.inp.jog_plus[0]  = pressed
@@ -375,7 +378,7 @@ class Renderer:
         g.segid = 1
         scene.ngeom += 1
 
-    def render(self, window, des_pos: np.ndarray, cam_name: str):
+    def render(self, window, des_pos: np.ndarray, cam_name: str, stickiness_enabled: bool = True, attached_object: str = None):
         # Ensure GL context-dependent resources exist
         if self.ctx is None:
             self.initialize_gl()
@@ -384,9 +387,15 @@ class Renderer:
         mujoco.mjv_updateScene(self.robot.model, self.robot.data, self.opt, None, self.cam, mujoco.mjtCatBit.mjCAT_ALL, self.scene)
         Renderer.draw_target_marker(self.scene, des_pos, self.cfg.target_radius, np.array(self.cfg.target_rgba))
         mujoco.mjr_render(viewport, self.scene, self.ctx)
+        
+        # Create status line with stickiness and attachment info
+        sticky_status = "ON" if stickiness_enabled else "OFF"
+        attach_status = f" | Attached: {attached_object}" if attached_object else ""
+        
         overlay = (
             f"Cam: {cam_name} (C) | "
             "XY: ←/→,↑/↓ | Z: A/D | Grip: F/G | IK: X toggle | "
+            f"Stickiness: {sticky_status} (S toggle){attach_status} |\n"
             "Reset: B(saved-or-xml), Z(XML) | "
             "Joint jog (num=+ letter=-): 1/Q, 2/W, 3/E, 4/R, 5/T, 6/Y, 7/U (Shift=coarse) |\n "
             "Rec: M start/stop, N finalize, J=delete last rec | ESC quits"
@@ -426,6 +435,8 @@ class TeleopApp:
         self.gripper = GripperController(self.robot)
         # IK enable toggle (X key). When False, IK target tracking is disabled.
         self.ik_enabled: bool = True
+        # Grasp stickiness toggle (S key). When False, objects won't stick to gripper.
+        self.stickiness_enabled: bool = True
         # Sticky attach state
         self.attached: Optional[str] = None
         self.attach_offset_pos = np.zeros(3)
@@ -504,7 +515,14 @@ class TeleopApp:
         window = self._create_window()
 
         on_key = self.inp_ctrl.install(window)
-        recorder = create_lerobot_recorder(self.robot.model, self.robot.data, "panda_teleop_dataset")
+        # Disable video recording while keeping parquet/meta recording.
+        recorder = create_lerobot_recorder(self.robot.model, self.robot.data, "panda_teleop_dataset", record_video=False)
+        # Provide actuator names in the exact recorded order for mapping later
+        try:
+            names = [mujoco.mj_id2name(self.robot.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in self.robot.full_arm_act_ids]
+            recorder._actuator_names = names
+        except Exception:
+            pass
         enhanced_on_key = add_lerobot_controls(recorder, on_key)
         glfw.set_key_callback(window, enhanced_on_key)
         # Initialize GL-dependent renderer state now that a context exists
@@ -562,6 +580,15 @@ class TeleopApp:
             if self.inp_ctrl.inp.toggle_ik:
                 self.ik_enabled = not self.ik_enabled
                 print(f"[INFO] IK tracking {'ENABLED' if self.ik_enabled else 'DISABLED'} (X)")
+            
+            # Toggle grasp stickiness if requested
+            if self.inp_ctrl.inp.toggle_stickiness:
+                self.stickiness_enabled = not self.stickiness_enabled
+                print(f"[INFO] Grasp stickiness {'ENABLED' if self.stickiness_enabled else 'DISABLED'} (S)")
+                # If stickiness is disabled, release any attached object
+                if not self.stickiness_enabled and self.attached is not None:
+                    print(f"[INFO] Released {self.attached} due to stickiness being disabled")
+                    self.attached = None
 
             for _ in range(substeps):
                 self._tick_control(dt_ctrl)
@@ -569,7 +596,7 @@ class TeleopApp:
 
             cam_name = self.cam_names[self.cam_index]
 
-            self.renderer.render(window, self.des_pos, cam_name)
+            self.renderer.render(window, self.des_pos, cam_name, self.stickiness_enabled, self.attached)
 
         glfw.terminate()
         if recorder.is_recording:
@@ -681,7 +708,8 @@ class TeleopApp:
             q_des[i] = float(clamp(q_des[i], lo, hi))
 
         # Handle stickiness and gripper before clearing one-shot flags
-        #self._handle_grasp_stickiness()
+        if self.stickiness_enabled:
+            self._handle_grasp_stickiness()
         self.gripper.update_from_input(self.inp_ctrl.inp)
         self.inp_ctrl.inp.reset_oneshot()
 
@@ -693,35 +721,53 @@ class TeleopApp:
         self.gripper.apply()
 
     def _handle_grasp_stickiness(self):
+        """Handle sticky grasping when stickiness is enabled"""
         # Attach when closing near a known object
         if self.inp_ctrl.inp.grip_close and self.attached is None:
             ee_pos, ee_R = self.robot.ee_pose()
-            for body_name in ("wine_bottle", "cup"):
+            # Check for graspable objects (can be extended to include more objects)
+            graspable_objects = ["wine_bottle", "cup", "beer_glass1", "Wine_glass1"]
+            
+            for body_name in graspable_objects:
                 bid = self.robot.body_name_to_id.get(body_name, -1)
                 if bid < 0:
                     continue
                 body_pos = np.copy(self.robot.data.xpos[bid])
-                if np.linalg.norm(body_pos - ee_pos) < self.cfg.grasp_capture_dist:
+                distance = np.linalg.norm(body_pos - ee_pos)
+                
+                if distance < self.cfg.grasp_capture_dist:
                     # compute offset
                     body_R = self.robot.data.xmat[bid].reshape(3,3)
                     self.attach_offset_mat = ee_R.T @ body_R
                     self.attach_offset_pos = ee_R.T @ (body_pos - ee_pos)
                     self.attached = body_name
-                    print(f"[INFO] Attached: {body_name}")
+                    print(f"[INFO] Sticky grasp activated: {body_name} (distance: {distance:.3f}m)")
                     break
 
-        # Release on open
+        # Release on open or if stickiness is disabled
         if self.inp_ctrl.inp.grip_open:
-            self.attached = None
+            if self.attached is not None:
+                print(f"[INFO] Released: {self.attached}")
+                self.attached = None
 
         # Drive attached body's free joint qpos to follow EE (strong stickiness)
         if self.attached is not None:
-            jname = "bottle_free" if self.attached == "wine_bottle" else ("cup_free" if self.attached == "cup" else None)
+            # Map object names to their corresponding joint names
+            joint_mapping = {
+                "wine_bottle": "bottle_free",
+                "cup": "cup_free", 
+                "beer_glass1": "beer_glass_free1",
+                "beer_glass2": "beer_glass_free2",
+                "Wine_glass1": "wine_glass_free1"
+            }
+            
+            jname = joint_mapping.get(self.attached)
             if jname and jname in self.robot.jnt_name_to_qposadr:
                 adr = self.robot.jnt_name_to_qposadr[jname]
                 ee_pos, ee_R = self.robot.ee_pose()
                 R = ee_R @ self.attach_offset_mat
                 p = ee_pos + ee_R @ self.attach_offset_pos
+                
                 # rotation to quaternion wxyz
                 tr = R[0,0] + R[1,1] + R[2,2]
                 if tr > 0:
@@ -731,7 +777,9 @@ class TeleopApp:
                     qz = (R[1,0] - R[0,1]) / (4*qw)
                 else:
                     qw, qx, qy, qz = 1.0, 0.0, 0.0, 0.0
+                
                 self.robot.data.qpos[adr:adr+7] = np.array([p[0], p[1], p[2], qw, qx, qy, qz])
+                
                 # Zero velocities to keep object glued
                 dofadr = self.robot.model.jnt_dofadr[mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_JOINT, jname)]
                 self.robot.data.qvel[dofadr:dofadr+6] = 0.0

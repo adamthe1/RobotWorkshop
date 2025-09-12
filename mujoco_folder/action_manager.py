@@ -25,9 +25,10 @@ class ActionManager:
             joint_targets = joint_targets[:len(actuator_indices)]
 
         if snapshot:
-            # clamp joint targets to actuator limits
+            # Clamp each target using the correct actuator's limits
             for i in range(len(joint_targets)):
-                lo, hi = snapshot.actuator_ctrlrange[i]
+                act_idx = actuator_indices[i]
+                lo, hi = snapshot.actuator_ctrlrange[act_idx]
                 joint_targets[i] = self.clamp(joint_targets[i], lo, hi)
 
         return actuator_indices, joint_targets

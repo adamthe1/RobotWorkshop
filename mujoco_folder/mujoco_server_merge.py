@@ -126,14 +126,27 @@ class MuJoCoServer:
             return False
         try:
             base = os.getenv("MAIN_DIRECTORY") or str(Path.cwd())
-            saved_dir = Path(base) / "xml_robots" / "saved_state"
-            if not saved_dir.exists():
-                self.logger.warning(f"LOAD_SAVED_STATE set but directory not found: {saved_dir}")
-                return False
-            candidates = sorted(saved_dir.glob("*.npz"), key=lambda p: p.stat().st_mtime)
+            # Allow explicit override via env
+            override = os.getenv("REPLAY_SAVED_STATE_DIR", "").strip()
+            search_dirs = []
+            if override:
+                search_dirs.append(Path(override))
+            search_dirs.append(Path(base) / "xml_robots" / "saved_state")
+            search_dirs.append(Path(base) / "finetuning" / "saved_robot_states")
+
+            # Collect all candidate .npz files across directories
+            candidates = []
+            for d in search_dirs:
+                if d.exists():
+                    candidates.extend(list(d.glob("*.npz")))
+
             if not candidates:
-                self.logger.warning(f"LOAD_SAVED_STATE set but no .npz files in: {saved_dir}")
+                self.logger.warning(
+                    "LOAD_SAVED_STATE set but no .npz files found in: " + ", ".join(str(p) for p in search_dirs)
+                )
                 return False
+            # Use most recent by mtime
+            candidates.sort(key=lambda p: p.stat().st_mtime)
             path = candidates[-1]
             arr = np.load(path, allow_pickle=True)
             if not ("joint_names" in arr and "qpos" in arr and "qvel" in arr):
@@ -285,7 +298,9 @@ class MuJoCoServer:
                     self.robot_control.apply_commands(pkt)
                     reply = pkt
                 else:
-                    reply = self.robot_control.fill_packet(pkt)
+                    # Allow disabling camera images in state to reduce payload
+                    no_cam = os.getenv("NO_CAMERA_IN_STATE", "0").strip() in ("1", "true", "yes", "on")
+                    reply = self.robot_control.fill_packet(pkt, no_camera=no_cam)
                 self._send_packet(reply, client_socket)  # Pass socket
         except Exception as e:
             self.logger.error(f"Error in client loop: {e}")
@@ -458,5 +473,5 @@ class MujocoClient:
 
 
 if __name__ == '__main__':
-    server = MuJoCoServer(xml_path=find_model_path(), num_robots=5)
+    server = MuJoCoServer(xml_path=find_model_path(), num_robots=1)
     server.run()

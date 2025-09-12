@@ -2,12 +2,13 @@ import socket
 import threading
 import json
 import queue
-from collections import deque
+from collections import deque, defaultdict
 import struct
 from dotenv import load_dotenv
 import os
 from logger_config import get_logger
 import time
+from control_panel.missions import SUPPORTED_MISSIONS_PER_ROBOT
 load_dotenv()
 
 def _recvall(sock, n):
@@ -26,14 +27,25 @@ class QueueServer:
         self.port = int(os.getenv("QUEUE_PORT", 9000))
         
         # Initialize data structures
-        self.robot_locks = {}  # 0 = free, 1 = locked
-        self.mission_queue = deque()
-        self.free_robot_queue = deque()  # Initially all robots are free
+        self.robot_locks = {}  # robot_id -> 0 = free, 1 = locked
+        self.robot_dict = {}   # robot_id -> robot_type
+        self.mission_queue = deque()  # missions waiting
+        self.free_robot_queue = deque()  # generic queue before types known (back-compat)
+        # Per-type available robots queues
+        self.type_to_queue = defaultdict(deque)  # robot_type -> deque(robot_id)
+        # Stats for heuristic
+        self.type_missions_given = defaultdict(int)  # robot_type -> count
+        # Cached next robot-mission pair to hand out
+        self.next_pair = None  # tuple(robot_id, mission) or None
+        # Heuristic weights
+        self.w1 = 1.0
+        self.w2 = 1.0
         
         # Thread locks for thread safety
         self.locks_lock = threading.Lock()
         self.mission_lock = threading.Lock()
         self.robot_lock = threading.Lock()
+        self.pair_lock = threading.Lock()
         
         self.running = False
         self.server_socket = None
@@ -47,6 +59,9 @@ class QueueServer:
         self.server_socket.bind((self.host, self.port))
         self.server_socket.listen(5)
         self.running = True
+        # Start background filler to maintain next_pair
+        filler_thread = threading.Thread(target=self._filler_loop, daemon=True)
+        filler_thread.start()
         
         try:
             self.logger.info(f"Queue server listening on {self.host}:{self.port}")
@@ -142,6 +157,10 @@ class QueueServer:
         elif action == "get_robot_mission_pair": 
             return self.get_robot_mission_pair()
 
+        elif action == "set_robot_dict":
+            robot_dict = request.get("robot_dict", {})
+            return self.set_robot_dict(robot_dict)
+
         elif action == "get_robot_lock":
             robot_id = request.get("robot_id")
             return self.get_robot_lock(robot_id)
@@ -186,29 +205,53 @@ class QueueServer:
             "added_robots": added_robots,
             "skipped_robots": skipped_robots
         }
+
+    def set_robot_dict(self, robot_dict):
+        """Set robot_id -> robot_type mapping and initialize per-type queues.
+
+        Any robots already known and free are moved into their type-specific queues.
+        """
+        if not isinstance(robot_dict, dict):
+            return {"status": "error", "message": "robot_dict must be a dict"}
+
+        with self.robot_lock, self.locks_lock:
+            self.robot_dict.update(robot_dict)
+            # Ensure locks exist for all robots in dict
+            for rid in robot_dict.keys():
+                if rid not in self.robot_locks:
+                    self.robot_locks[rid] = 0
+            # Move any generic free robots into their type queues
+            remaining_generic = deque()
+            while self.free_robot_queue:
+                rid = self.free_robot_queue.popleft()
+                rtype = self.robot_dict.get(rid)
+                if rtype is not None:
+                    if self.robot_locks.get(rid, 0) == 0:
+                        self.type_to_queue[rtype].append(rid)
+                else:
+                    remaining_generic.append(rid)
+            self.free_robot_queue = remaining_generic
+        self.logger.info(f"Robot dict set. Types: {set(robot_dict.values())}")
+        return {"status": "success"}
     
     def get_robot_mission_pair(self):
         """Get a robot-mission pair atomically with proper locking."""
-        with self.robot_lock, self.mission_lock, self.locks_lock:
-            # Check if both robot and mission are available
-            if not self.free_robot_queue:
-                return {"status": "no_robots", "robot_id": None, "mission": None}
-            
-            if not self.mission_queue:
-                return {"status": "no_missions", "robot_id": None, "mission": None}
-            
-            # Get robot and mission atomically
-            robot_id = self.free_robot_queue.popleft()
-            mission = self.mission_queue.popleft()
-            
-            # Set robot lock to locked
+        with self.pair_lock, self.robot_lock, self.mission_lock, self.locks_lock:
+            if self.next_pair is None:
+                # Reflect specific shortage states
+                if not self.mission_queue:
+                    return {"status": "no_missions", "robot_id": None, "mission": None}
+                # Check if any type queue has robots
+                any_robot = any(len(q) > 0 for q in self.type_to_queue.values()) or len(self.free_robot_queue) > 0
+                if not any_robot:
+                    return {"status": "no_robots", "robot_id": None, "mission": None}
+                return {"status": "pending", "robot_id": None, "mission": None}
+
+            robot_id, mission = self.next_pair
+            # Lock robot and clear next_pair
             self.robot_locks[robot_id] = 1
-            
-            return {
-                "status": "success", 
-                "robot_id": robot_id, 
-                "mission": mission
-            }
+            self.next_pair = None
+            return {"status": "success", "robot_id": robot_id, "mission": mission}
         
     def enqueue_mission(self, mission):
         """Add mission to queue."""
@@ -227,36 +270,43 @@ class QueueServer:
     
     def enqueue_robot(self, robot_id):
         """Add robot to free robot queue."""
-        with self.robot_lock:
-            if robot_id not in self.free_robot_queue:
-                self.free_robot_queue.append(robot_id)
-                # Also set robot lock to free
-                with self.locks_lock:
-                    self.robot_locks[robot_id] = 0
-                return {"status": "success", "message": f"Robot '{robot_id}' enqueued"}
+        with self.robot_lock, self.locks_lock:
+            # Set robot lock to free
+            self.robot_locks[robot_id] = 0
+            rtype = self.robot_dict.get(robot_id)
+            if rtype is not None:
+                # Deduplicate within type queue
+                if robot_id not in self.type_to_queue[rtype]:
+                    self.type_to_queue[rtype].append(robot_id)
+                return {"status": "success", "message": f"Robot '{robot_id}' enqueued (type {rtype})"}
             else:
+                if robot_id not in self.free_robot_queue:
+                    self.free_robot_queue.append(robot_id)
+                    return {"status": "success", "message": f"Robot '{robot_id}' enqueued (generic)"}
                 return {"status": "error", "message": f"Robot '{robot_id}' already in queue"}
     
     def dequeue_robot(self):
         """Get next free robot from queue."""
-        with self.robot_lock:
+        with self.robot_lock, self.locks_lock:
+            # Prefer type queues if available
+            for q in self.type_to_queue.values():
+                if q:
+                    robot_id = q.popleft()
+                    self.robot_locks[robot_id] = 1
+                    return {"status": "success", "robot_id": robot_id}
             if self.free_robot_queue:
                 robot_id = self.free_robot_queue.popleft()
-                # Set robot lock to locked
-                with self.locks_lock:
-                    self.robot_locks[robot_id] = 1
+                self.robot_locks[robot_id] = 1
                 return {"status": "success", "robot_id": robot_id}
-            else:
-                return {"status": "empty", "robot_id": None}
+            return {"status": "empty", "robot_id": None}
             
     def see_next_robot(self):
         """See next robot from queue without removing it."""
-        with self.robot_lock:
-            if self.free_robot_queue:
-                robot_id = self.free_robot_queue[0]  # Peek at first element
+        with self.pair_lock:
+            if self.next_pair is not None:
+                robot_id, _ = self.next_pair
                 return {"status": "success", "robot_id": robot_id}
-            else:
-                return {"status": "empty", "robot_id": None}
+            return {"status": "empty", "robot_id": None}
 
     
     def get_robot_lock(self, robot_id):
@@ -286,6 +336,59 @@ class QueueServer:
                 "robot_locks": dict(self.robot_locks),
                 "free_robots": list(self.free_robot_queue)
             }
+
+    def _eligible_types_for_mission(self, mission):
+        # Build inverse map mission -> types
+        types = []
+        for rtype, missions in SUPPORTED_MISSIONS_PER_ROBOT.items():
+            if mission in missions:
+                types.append(rtype)
+        return types
+
+    def _num_supported_missions_for_type(self, rtype):
+        missions = SUPPORTED_MISSIONS_PER_ROBOT.get(rtype, [])
+        return len(missions)
+
+    def _filler_loop(self):
+        """Continuously try to populate next_pair from queues using heuristic."""
+        while self.running:
+            with self.pair_lock:
+                if self.next_pair is not None:
+                    # Already have a pair ready
+                    pass
+                else:
+                    # Try to form a pair
+                    with self.mission_lock, self.robot_lock:
+                        if not self.mission_queue:
+                            self.logger.debug("no missions in queue yet")
+                            time.sleep(0.03)
+                            continue
+                        # Look at head mission without popping yet
+                        mission = self.mission_queue[0]
+                        eligible_types = self._eligible_types_for_mission(mission)
+                        # Filter only types with available robots
+                        candidates = []
+                        for rtype in eligible_types:
+                            if self.type_to_queue[rtype]:
+                                # Heuristic score
+                                can_do_less = 1.0 / max(1, self._num_supported_missions_for_type(rtype))
+                                given = - float(self.type_missions_given[rtype])
+                                score = self.w1 * can_do_less + self.w2 * given
+                                candidates.append((score, rtype))
+                        if not candidates:
+                            self.logger.debug("No eligible robots available for head mission")
+                            time.sleep(0.03)
+                            continue
+                        # Pick best type by score
+                        candidates.sort(key=lambda x: x[0], reverse=True)
+                        _, best_type = candidates[0]
+                        robot_id = self.type_to_queue[best_type].popleft()
+                        # Now finalize: pop mission, set next_pair, update stats
+                        self.mission_queue.popleft()
+                        self.type_missions_given[best_type] += 1
+                        self.next_pair = (robot_id, mission)
+            time.sleep(0.01)
+
 
 
 class QueueClient:
@@ -382,6 +485,16 @@ class QueueClient:
         request = {"action": "enqueue_mission", "mission": mission}
         self.logger.info(f"Enqueuing mission: {mission}")
         return self._send_request(request)
+
+    @staticmethod
+    def set_robot_dict(robot_dict):
+        """Send robot_id -> robot_type mapping to queue server."""
+        client = QueueClient()
+        if not client.connect():
+            return {"status": "error", "message": "Cannot connect to queue server"}
+        resp = client._send_request({"action": "set_robot_dict", "robot_dict": robot_dict})
+        client.disconnect()
+        return resp
     
     def get_mission_from_queue(self):
         """Get next mission from queue."""
