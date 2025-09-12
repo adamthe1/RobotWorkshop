@@ -28,5 +28,5 @@ SUPPORTED_MISSIONS = {
 }
 
 SUPPORTED_MISSIONS_PER_ROBOT = {
-    "FrankaPanda": ["placeCupOnBar"],
+    "FrankaPanda": ["placeCupOnBar", "testC"],
     "SO101": ["placeCupOnBar"]}
