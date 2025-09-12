@@ -30,12 +30,9 @@ class EpisodeActionMapper:
         # Controls
         self.loop: bool = False  # keep simple and deterministic
         # Time-warp without interpolation: >1.0 faster (skip), <1.0 slower (repeat)
-        try:
-            self.replay_speed: float = float(os.getenv("REPLAY_SPEED", "1.0"))
-        except Exception:
-            self.replay_speed = 1.0
+        self.replay_speed = 10.0
         # Optional alternate source: derive actions from observation.state for parity
-        self.use_obs_as_action: bool = os.getenv("REPLAY_USE_OBS_AS_ACTION", "0").strip() in ("1","true","yes","on")
+        self.use_obs_as_action: bool = True
 
         # Storage
         # {(rt, mission, sub_mission): np.ndarray(T,A)}
@@ -54,19 +51,10 @@ class EpisodeActionMapper:
                 self.mission_sub_missions[(rt, mission)] = sub_missions
                 for sm in sub_missions:
                     p = os.path.join(mission_folder, f"{sm}.parquet")
-                    if not os.path.isfile(p):
-                        # If this looks like a reset step, synthesize a reset sequence to initial state
-                        if sm.replace(" ", "_") in ("reset_before_new_mission", "reset", "return_to_initial"):
-                            arr = self._build_synthetic_reset(rt, mission)
-                            if arr is not None:
-                                key = (rt, mission, sm)
-                                self.episode_actions[key] = arr
-                                self.episode_lengths[key] = int(arr.shape[0])
-                                self.logger.info(
-                                    f"Synthesized reset sequence for {rt}/{mission}/{sm}: frames={arr.shape[0]} dim={arr.shape[1]}"
-                                )
-                                continue
-                        self.logger.warning(f"Missing parquet for {rt}/{mission}/{sm}: {p}")
+                    if not os.path.isfile(p):#??>>??
+                        self.logger.warning(f"Missing episode file for {rt}/{mission}/{sm}: {p}")
+                        self.episode_actions[(rt, mission, sm)] = np.empty((0, 0), dtype=float)
+                        self.episode_lengths[(rt, mission, sm)] = 0
                         continue
                     arr = self._load_parquet_actions_exact(p)
                     # Optional: replace actions using observation.state with mapping
@@ -219,69 +207,6 @@ class EpisodeActionMapper:
         reps = max(1, int(round(1.0 / max(1e-9, speed))))
         return np.repeat(frames, reps, axis=0)
 
-    # -------- Synthetic reset synthesis --------
-    def _build_synthetic_reset(self, robot_type: str, mission: str) -> Optional[np.ndarray]:
-        """Create a simple reset sequence that holds the initial joint targets for a duration.
-
-        Uses latest saved joint-only state (.npz) from REPLAY_SAVED_STATE_DIR or
-        finetuning/saved_robot_states. Maps joint1..joint7 to first 7 action dims and
-        sets gripper to 0.0 (open) by default. Duration controlled by RESET_HOLD_SECONDS
-        and CONTROL_HZ envs.
-        """
-        try:
-            import glob
-            base = os.getenv("MAIN_DIRECTORY") or os.getcwd()
-            override = os.getenv("REPLAY_SAVED_STATE_DIR", "").strip()
-            search_dirs = [d for d in [override, os.path.join(base, "finetuning", "saved_robot_states")] if d]
-            candidates = []
-            for d in search_dirs:
-                if os.path.isdir(d):
-                    candidates.extend(sorted(glob.glob(os.path.join(d, "*.npz")), key=os.path.getmtime))
-            if not candidates:
-                self.logger.warning("No saved robot state found for synthetic reset; skipping")
-                return None
-            path = candidates[-1]
-            arr = np.load(path, allow_pickle=True)
-            if not ("joint_names" in arr and "qpos" in arr):
-                self.logger.warning(f"Saved state missing joint_names/qpos: {path}")
-                return None
-            names = [str(x) for x in arr["joint_names"].tolist()]
-            qpos = np.array(arr["qpos"], dtype=float).ravel()
-            # Expect Franka Panda joints 'joint1'..'joint7'
-            target7 = []
-            for i in range(1, 8):
-                nm = f"joint{i}"
-                try:
-                    idx = names.index(nm)
-                    target7.append(float(qpos[idx]))
-                except ValueError:
-                    target7.append(0.0)
-            # Append gripper (open=0.0 by default). Adjust if your gripper uses another neutral.
-            target = np.array(target7 + [0.0], dtype=float)
-
-            # Determine frames to hold
-            try:
-                hz = float(os.getenv("CONTROL_HZ", "60"))
-            except Exception:
-                hz = 60.0
-            try:
-                seconds = float(os.getenv("RESET_HOLD_SECONDS", "2.0"))
-            except Exception:
-                seconds = 2.0
-            frames = max(1, int(round(hz * seconds)))
-            out = np.tile(target.reshape(1, -1), (frames, 1))
-            return out
-        except Exception as e:
-            self.logger.warning(f"Failed to synthesize reset sequence: {e}")
-            return None
-
-    # -------- Control flow --------
-    def reset(self, robot_id: Optional[str] = None, robot_type: Optional[str] = None, mission: Optional[str] = None):
-        if robot_id and robot_type and mission:
-            self.robot_mission_state[(robot_id, robot_type, mission)] = {'i_sub': 0, 'i_frame': 0}
-        else:
-            self.robot_mission_state.clear()
-
     def next_action(self, robot_id: str, robot_type: str, mission: str) -> List[float]:
         # Reserved auto-reset mission: serve synthesized reset sequence regardless of dataset
         if mission == "__auto_reset__":
@@ -331,24 +256,6 @@ class EpisodeActionMapper:
             state['i_frame'] += 1
             return out.tolist()
 
-        # Completed mission frames: optionally serve a synthetic reset tail
-        tail_key = (robot_id, robot_type, mission)
-        tail = self._reset_tails.get(tail_key)
-        if tail is None:
-            synth = self._build_synthetic_reset(robot_type, mission)
-            if synth is not None and synth.shape[0] > 0:
-                self._reset_tails[tail_key] = {'frames': synth, 'idx': 0}
-                tail = self._reset_tails[tail_key]
-        if tail is not None:
-            frames = tail['frames']
-            idx = tail['idx']
-            if idx < frames.shape[0]:
-                out = frames[idx].astype(float).ravel()
-                tail['idx'] = idx + 1
-                return out.tolist()
-            # tail finished; drop it
-            self._reset_tails.pop(tail_key, None)
-
         # Completed everything
         if self.loop and sub_list:
             state['i_sub'] = 0
@@ -358,16 +265,8 @@ class EpisodeActionMapper:
 
     # -------- Progress --------
     def get_progress(self, robot_id: str, robot_type: str, mission: str) -> float:
-        # Auto-reset mission: progress based on reset tail
-        if mission == "__auto_reset__":
-            tail = self._reset_tails.get((robot_id, robot_type, mission))
-            if not tail:
-                return 1.0
-            frames = tail.get('frames')
-            idx = int(tail.get('idx', 0))
-            if not isinstance(frames, np.ndarray) or frames.shape[0] == 0:
-                return 1.0
-            return min(idx / frames.shape[0], 1.0)
+        """Return progress through the mission as a float in [0, 1]."""
+
         key_state = (robot_id, robot_type, mission)
         state = self.robot_mission_state.get(key_state)
         sub_list = self.mission_sub_missions.get((robot_type, mission), [])
@@ -384,19 +283,8 @@ class EpisodeActionMapper:
             elif i == state['i_sub']:
                 done += min(state['i_frame'], n)
         base = 0.0 if total == 0 else min(done / total, 1.0)
-        # If a reset tail is pending, keep progress strictly less than 1.0 to prevent early completion
-        if self.is_reset_pending(robot_id, robot_type, mission):
-            # Nudge below 1.0 but keep monotonic behavior
-            return min(base, 0.999)
         return base
 
-    def is_reset_pending(self, robot_id: str, robot_type: str, mission: str) -> bool:
-        tail = self._reset_tails.get((robot_id, robot_type, mission))
-        if not tail:
-            return False
-        frames = tail.get('frames')
-        idx = int(tail.get('idx', 0))
-        return isinstance(frames, np.ndarray) and idx < frames.shape[0]
 
     # -------- Utilities --------
     def load_type(self, robot_type: str) -> bool:
