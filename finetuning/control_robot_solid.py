@@ -726,7 +726,7 @@ class TeleopApp:
             q_des[i] = float(clamp(q_des[i], lo, hi))
 
         # Handle stickiness and gripper before clearing one-shot flags
-        if self.stickiness_enabled:
+        if False:
             self._handle_grasp_stickiness()
         self.gripper.update_from_input(self.inp_ctrl.inp)
         self.inp_ctrl.inp.reset_oneshot()

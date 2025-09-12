@@ -22,11 +22,11 @@ load_dotenv()
 @dataclass
 class RecordingConfig:
     """Configuration for LeRobot recording following v2.1 format"""
-    dataset_name: str = "mujoco_teleop"
+    dataset_name: str = "recording_for_action_mapper"
     output_dir: str = os.getenv("MAIN_DIRECTORY") + "/finetuning/datasets" 
     fps: int = 30
     robot_type: str = "franka_panda"
-    record_video: bool = True
+    record_video: bool = False
     video_width: int = 224
     video_height: int = 224
     video_fps: int = 30
@@ -38,7 +38,7 @@ class RecordingConfig:
     def __post_init__(self):
         if self.camera_names is None:
             # Default camera names from mjx_panda.xml
-            base_cameras = ["main_cam", "wrist_cam"]  # Camera in the hand
+            base_cameras = ["main_cam"]  # Camera in the hand
             
             if self.use_robot_prefix:
                 # Add robot prefix to camera names
@@ -669,7 +669,6 @@ def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData,
     # Create config and respect the record_video flag so callers can disable
     # only the video recording while keeping parquet/meta recording intact.
     config = RecordingConfig()
-    config.record_video = bool(record_video)
     # Align dataset FPS and video FPS to shared CONTROL_HZ for consistent timing
     try:
         hz = float(os.getenv("CONTROL_HZ", "60"))
