@@ -7,8 +7,11 @@ from control_panel.mission_manager import MissionManager
 from control_panel.robot_queue_locks import QueueClient
 import os
 from dotenv import load_dotenv
-from control_panel.missions import SUPPORTED_MISSIONS
+from control_panel.missions import mission_for_types
 from typing import List, Tuple, Optional
+
+from mujoco_folder.mujoco_server_merge import MujocoClient
+import time
 
 load_dotenv()
 
@@ -17,10 +20,11 @@ app = typer.Typer()
 class DrinkOrderProcessor:
     """Handles drink order parsing, validation, and processing"""
     
-    def __init__(self, queue_client: QueueClient, max_queue_size: int):
+    def __init__(self, queue_client: QueueClient, max_queue_size: int, possible_missions: List[str]):
         self.queue_client = queue_client
         self.max_queue_size = max_queue_size
         self.logger = get_logger('DrinkOrderProcessor')
+        self.possible_missions = possible_missions
 
     def parse_drink_orders(self, message: str) -> List[Tuple[str, int]]:
         """Parse drink orders from LLM message"""
@@ -33,7 +37,7 @@ class DrinkOrderProcessor:
         unsupported_drinks = []
         
         for drink, count in orders:
-            if drink in SUPPORTED_MISSIONS:
+            if drink in self.possible_missions:
                 valid_orders.append((drink, count))
             else:
                 unsupported_drinks.append(drink)
@@ -60,9 +64,10 @@ class DrinkOrderProcessor:
 class LLMResponseHandler:
     """Handles LLM communication and response processing"""
     
-    def __init__(self, llm_client: LLMClient):
+    def __init__(self, llm_client: LLMClient, possible_missions):
         self.llm_client = llm_client
         self.logger = get_logger('LLMResponseHandler')
+        self.possible_missions = possible_missions
 
     def get_llm_response(self, user_input: str) -> str:
         """Get response from LLM and extract message content"""
@@ -82,7 +87,7 @@ class LLMResponseHandler:
         unsupported_list = ", ".join(unsupported_drinks)
         return (f"The drinks '{unsupported_list}' are not supported. "
                 f"Please retry with supported drinks or ask for a better explanation of what you want. "
-                f"Supported drinks include: {', '.join(SUPPORTED_MISSIONS)}, You must use the exact drink names as listed, ")
+                f"Supported drinks include: {', '.join(self.possible_missions)}, You must use the exact drink names as listed, ")
 
     def clean_message_for_display(self, message: str) -> str:
         """Remove drink tags from message for user display"""
@@ -90,16 +95,17 @@ class LLMResponseHandler:
 
 class DrinkOrderSession:
     """Main session handler for drink ordering"""
-    
-    def __init__(self, llm_client: Optional[LLMClient] = None):
-        self.llm_handler = LLMResponseHandler(llm_client or LLMClient())
+
+    def __init__(self, llm_client: Optional[LLMClient] = None, possible_missions: List[str] = None):
+        self.llm_handler = LLMResponseHandler(llm_client or LLMClient(possible_missions), possible_missions)
         self.logger = get_logger('CLI')
         self.max_jobs = int(os.getenv('MISSION_QUEUE_SIZE', 3))
+        self.possible_missions = possible_missions
 
     def handle_user_input(self, user_input: str, queue_client: QueueClient) -> None:
         """Handle a single user input and process drink orders"""
-        order_processor = DrinkOrderProcessor(queue_client, self.max_jobs)
-        
+        order_processor = DrinkOrderProcessor(queue_client, self.max_jobs, possible_missions=self.possible_missions)
+
         # Keep trying until we get valid drinks or no drinks
         current_input = user_input
         
@@ -150,11 +156,11 @@ class SimpleMenuSession:
     mission to the queue, respecting the queue capacity.
     """
 
-    def __init__(self):
+    def __init__(self, possible_missions: List[str]):
         self.logger = get_logger('CLI')
         self.max_jobs = int(os.getenv('MISSION_QUEUE_SIZE', 3))
         # Preserve mission order as defined in SUPPORTED_MISSIONS
-        self._missions = list(SUPPORTED_MISSIONS.keys())
+        self._missions = possible_missions
 
     def _print_menu(self) -> None:
         typer.echo("Pick a mission by number:")
@@ -191,27 +197,32 @@ class SimpleMenuSession:
             mission = self._missions[choice]
             queue_client.enqueue_mission(mission)
             typer.echo(f"Enqueued mission: {mission}")
+            time.sleep(1)  # Small delay for readability
 
 @app.command()
 def order_drink():
     """Chat with the robot bartender and order a drink."""
     typer.echo('Welcome to RoboBartender!')
     
+
+
+    robot_list, robot_dict = MujocoClient().recv_robot_list_and_dict()
+    possible_missions = mission_for_types(set(robot_dict.values()))
     # Detect if an LLM is configured and healthy; else, fall back to simple menu.
     if 'GLM_API_KEY' not in os.environ and 'OPENAI_API_KEY' not in os.environ:
-        typer.echo("No LLM API key configured. Falling back to simple menu.")
         has_llm = False
     else:
-        llm_client = LLMClient()
+        llm_client = LLMClient(possible_missions)
         has_llm = llm_client.is_configured_and_healthy()
+    
 
     with QueueClient() as queue:
         if has_llm:
-            session = DrinkOrderSession(llm_client)
+            session = DrinkOrderSession(llm_client, possible_missions)
             session.run_session(queue)
         else:
             typer.echo("No LLM configured. Starting simple menu interface.")
-            session = SimpleMenuSession()
+            session = SimpleMenuSession(possible_missions)
             session.run_session(queue)
 
 

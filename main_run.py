@@ -89,6 +89,7 @@ class MainOrchestrator:
             time.sleep(0.3)
 
         self.logger.info(f"Robot {robot_id} assigned mission: {packet}")
+        print(f"\nHey, {robot_id} is preparing your drink, please come to it's bar\n")
 
         while self.running:
             try:

@@ -30,3 +30,11 @@ SUPPORTED_MISSIONS = {
 SUPPORTED_MISSIONS_PER_ROBOT = {
     "FrankaPanda": ["placeCupOnBar", "testC", "pour beer", "pour mojito"],
     "SO101": ["wave_hello"]}
+
+def mission_for_types(robot_types):
+    """Get supported missions for given robot types"""
+    missions = set()
+    for rtype in robot_types:
+        if rtype in SUPPORTED_MISSIONS_PER_ROBOT:
+            missions.update(SUPPORTED_MISSIONS_PER_ROBOT[rtype])
+    return list(missions)

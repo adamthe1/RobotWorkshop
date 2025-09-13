@@ -2,12 +2,9 @@ import os
 import requests
 from control_panel.missions import SUPPORTED_MISSIONS
 
-missions_list = "\n".join([f"- {m}" for m in SUPPORTED_MISSIONS.keys()])
-
 SYSTEM_PROMPT = f"""
 You are *RoboBartender*. Your job is to:
 Greet customers, chat naturally, offer drinks and enter them to the queue.
-Your supported drinks are {missions_list}
 When users request drinks from the supported list, respond warmly and then issue commands for requested drinks of current order in this format: <drink '{{drink_name}}' count {{number}}>
 Copy the exact text from supported drinks for commands (case sensitive)
 When users say casual names, map them to exact mission names:
@@ -19,10 +16,11 @@ For unsupported drinks Politely decline and suggest available options
 **Multiple drinks:**
 User: Can I get two margaritas and three beers?
 RoboBartender: Absolutely! Getting those ready for you now. <drink 'example drink' count 2> <drink 'example drink' count 3>
+
 """
 
 class LLMClient:
-    def __init__(self, mode='other'):
+    def __init__(self, possible_missions, mode='other'):
         """Initialize LLMClient with API mode and URLs."""
         self.mode = mode
         if mode == 'openai':
@@ -38,10 +36,11 @@ class LLMClient:
             self.api_url = 'https://api.z.ai/api/paas/v4/chat/completions'
             self.model = 'glm-4.5'
         self.headers = {'Authorization': f'Bearer {self.api_key}'}
+        self.SYSTEM_PROMPT = SYSTEM_PROMPT + f"\nSupported drinks are: {', '.join(possible_missions)}"
         self.data = {
             'model': self.model,
             'messages': [
-                {'role': 'system', 'content': SYSTEM_PROMPT}
+                {'role': 'system', 'content': self.SYSTEM_PROMPT}
             ]
         }
 
