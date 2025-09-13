@@ -138,11 +138,15 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
     </body>'''
 
         elif robot_dict[robot_id] == "SO101":
+      # add pedestal under so101
             xml_content += f'''
             <!-- ==================== ROBOT {i} SCENE ==================== -->
+    <body name="table_so101_{i}" pos="{pos_with_offset(0.05, 0, 0, j)}">
+      <geom type="box" size="0.3 0.2 0.75" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
 
     <!-- Robot {i} -->
-    <body name="robot{i}" pos="{pos_with_offset(0.05 ,-0.2 ,0, j)}">
+    <body name="robot{i}" pos="{pos_with_offset(0.05 ,0 ,0.75, j)}">
       <attach model="so101" body="base" prefix="{prefix}"/>
     </body>'''
             
