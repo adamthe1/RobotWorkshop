@@ -133,16 +133,8 @@ This allows you to:
   - Use the lightweight viewer (`R` to record) to capture frames under `example_gifs/imagesforgif/…`.
 - Stitch into a GIF: `python3 mujoco_folder/make_gif.py --speed 2` (increase `--speed` to make the GIF play faster).
 
-### Show GIF on GitHub
-- Add a small demo GIF to the repo so GitHub renders it in the README.
-- Recommended path: `docs/media/pour_beer.gif` (kept small: scale=0.4, `--speed 2`).
-- Generate and copy latest GIF:
-  - `python3 mujoco_folder/make_gif.py --speed 2`
-  - Copy the output to `docs/media/pour_beer.gif` and commit it.
 
-Embed in README (already added below):
-
-<img src="example_gifs/pour_beer_example.gif" width="50%" height="50%"/>
+<img src="example_gifs/pour_beer_example.gif" width="100%" height="100%"/>
 
 ### Replaying Policies
 Preferred: place mission datasets under `finetuning/mission_episodes/<robot_type>/<mission>/<sub_mission>.parquet`.
