@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Environment variable to disable console output: LOG_NO_CONSOLE=1 or "true"
-NO_CONSOLE = os.getenv('LOG_NO_CONSOLE', '0').lower() in ('1', 'true', 'yes')
+NO_CONSOLE = os.getenv('LOG_NO_CONSOLE', '1').lower() in ('1', 'true', 'yes')
 
 class LogRecordStreamHandler(socketserver.StreamRequestHandler):
     def handle(self):

@@ -1,46 +1,54 @@
-VISION_WEIGHTS_PATH = '/path/to/your/weights.pth'
-MISSION_QUEUE_SIZE = 6  # Max jobs in queue
 
-# Rendering and system
-USE_GPU_WSL = 1
-LOG_NO_CONSOLE = 1
-NO_VIEWER = 0
+# The Main directory of the project - needed for paths
+MAIN_DIRECTORY = "/home/adam/Documents/coding/autonomous"
 
-# Paths
-MAIN_DIRECTORY = '/main/directory/'
-USE_DUPLICATING_PATH = 1  # Use duplicating MuJoCo scene generator
-MUJOCO_MODEL_PATH = ${MAIN_DIRECTORY}/franka_emika_panda/scene_bar_new_ziv.xml
-CONTROL_ROBOT_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene.xml
-LOAD_SAVED_STATE = 1
+# How many missions can be in the queue at once
+MISSION_QUEUE_SIZE = 6  
 
-# Robot configuration
-FRANKA_PANDA_COUNT = 2
-SO101_COUNT = 0
-
-# Networking (README defaults)
+# MuJoCo server configuration
 MUJOCO_HOST = 'localhost'
-MUJOCO_PORT = 8600
+MUJOCO_PORT = 8600  # Default port for MuJoCo server
+
+# Queue server configuration
 QUEUE_HOST = 'localhost'
 QUEUE_PORT = 8700
+
+# Logging server configuration
 LOGGING_HOST = 'localhost'
 LOGGING_PORT = 8400
+
+# Brain server configuration
 BRAIN_HOST = 'localhost'
 BRAIN_PORT = 8900
 
-# Replay (legacy single-file)
-REPLAY_EPISODE_PATH = ${MAIN_DIRECTORY}/finetuning/example_pouring/data/chunk-000/episode_000001.parquet
+# Use GPU acceleration (1 to enable, 0 to disable)
+USE_GPU_WSL = 1
 
-# Advanced replay/state controls
-CONTROL_HZ = 60
-REPLAY_SPEED = 1.0
-REPLAY_USE_OBS_AS_ACTION = 0
-REPLAY_OBS_FIRST_N = 7
-REPLAY_SAVED_STATE_DIR = ''  # Optional override for saved state dir
-RESET_HOLD_SECONDS = 2.0
-NO_CAMERA_IN_STATE = 0
-USE_TEST_MAPPER = 0
-USE_REPLAY_MAPPER = 0
+# if to use the Compose_scene for generating scenes (keep 1)
+USE_DUPLICATING_PATH = 1 
+#Robot configuration
+FRANKA_PANDA_COUNT = 1
+SO101_COUNT = 3
 
-# API keys
-OPENAI_API_KEY = 'api-key'
-GLM_API_KEY = 'api-key'
+# where to find the mujoco xml model files if not use duplicating path
+MUJOCO_MODEL_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene.xml
+LOAD_SAVED_STATE = 1
+
+# Control robot path (single robot for teleop and recording)
+CONTROL_ROBOT_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene_one_robot_franka.xml
+
+# Logging into logs folder
+LOG_NO_CONSOLE = 1
+
+# run simulation without viewer
+NO_VIEWER = 0
+
+# Reduce network payload by omitting camera images in state packets
+NO_CAMERA_IN_STATE = 1
+
+# LLM API Keys
+OPENAI_API_KEY = api_key
+GLM_API_KEY = api_key
+
+#Control loop rate to match recording
+CONTROL_HZ=30

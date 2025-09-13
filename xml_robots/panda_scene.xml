@@ -153,6 +153,246 @@
             mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
     </body>
     
+            <!-- ==================== ROBOT 2 SCENE ==================== -->
+
+    <!-- Robot 2 -->
+    <body name="robot2" pos="0.05 1.8 0">
+      <attach model="so101" body="base" prefix="so101_0_"/>
+    </body>
+
+    <!-- Bar wall for robot 2 -->
+    <body name="bar_wall2" pos="-1.0 2.0 0.4">
+      <geom type="box" size="0.1 1.0 0.8" material="bar_mat" density="2000" contype="1" conaffinity="1"/>
+    </body>
+
+    <!-- Table for robot 2 (raised +0.1) -->
+    <body name="table2" pos="0.8 2.0 0.3">
+      <geom type="box" size="0.3 0.9 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <body name="table_2_2" pos="0.2 2.6 0.3">
+      <geom type="box" size="0.3 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <body name="table_3_2" pos="0.2 1.4 0.3">
+      <geom type="box" size="0.3 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+
+    <!-- Small center coaster on the table (reference for cups) -->
+    <body name="center_coaster2" pos="0.63 2.0 0.8500000000000001">
+      <geom type="cylinder" size="0.07 0.01" material="coaster_mat" contype="0" conaffinity="0"/>
+    </body>
+
+    <body name="beer_glass2" pos="0.13 1.5 0.9500000000000001">
+      <joint name="beer_glass_free2" type="free" />
+      <!-- Outer glass (square / box shape) -->
+      <geom type="box"
+        size="0.03 0.03 0.10"
+        material="glass_mat"
+        mass="0.35"
+        contype="65535" conaffinity="65535" condim="6"
+        friction="5.8 0.25 0.05"
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1"/>
+
+
+      <geom name="beer_glass_base2"
+        type="box"
+        size="0.048 0.048 0.005"    
+        pos="0 0 -0.1"          
+        material="glass_mat"
+        mass="0.06"               
+        contype="65535"
+        conaffinity="65535"
+        condim="6"
+        friction="5.5 0.22 0.05"  
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1" />
+    </body>
+    
+    <!-- Green square bottle (right pedestal, right coaster) -->
+    <body name="green_bottle_body2" pos="0.05 2.5 0.9500000000000001">
+      <joint name="green_bottle_free2" type="free"/>
+      <geom name="green_bottle_body2" type="box" size="0.025 0.025 0.14" material="glass_green" mass="0.3"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_base2" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_neck2" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+
+    <!-- Yellow square bottle (right pedestal, left coaster) -->
+    <body name="yellow_bottle_body2" pos="0.2 2.5 0.9500000000000001">
+      <joint name="yellow_bottle_free2" type="free"/>
+      <geom name="yellow_bottle_body2" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.3"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_base2" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_neck2" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+    
+            <!-- ==================== ROBOT 3 SCENE ==================== -->
+
+    <!-- Robot 3 -->
+    <body name="robot3" pos="0.05 3.8 0">
+      <attach model="so101" body="base" prefix="so101_1_"/>
+    </body>
+
+    <!-- Bar wall for robot 3 -->
+    <body name="bar_wall3" pos="-1.0 4.0 0.4">
+      <geom type="box" size="0.1 1.0 0.8" material="bar_mat" density="2000" contype="1" conaffinity="1"/>
+    </body>
+
+    <!-- Table for robot 3 (raised +0.1) -->
+    <body name="table3" pos="0.8 4.0 0.3">
+      <geom type="box" size="0.3 0.9 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <body name="table_2_3" pos="0.2 4.6 0.3">
+      <geom type="box" size="0.3 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <body name="table_3_3" pos="0.2 3.4 0.3">
+      <geom type="box" size="0.3 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+
+    <!-- Small center coaster on the table (reference for cups) -->
+    <body name="center_coaster3" pos="0.63 4.0 0.8500000000000001">
+      <geom type="cylinder" size="0.07 0.01" material="coaster_mat" contype="0" conaffinity="0"/>
+    </body>
+
+    <body name="beer_glass3" pos="0.13 3.5 0.9500000000000001">
+      <joint name="beer_glass_free3" type="free" />
+      <!-- Outer glass (square / box shape) -->
+      <geom type="box"
+        size="0.03 0.03 0.10"
+        material="glass_mat"
+        mass="0.35"
+        contype="65535" conaffinity="65535" condim="6"
+        friction="5.8 0.25 0.05"
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1"/>
+
+
+      <geom name="beer_glass_base3"
+        type="box"
+        size="0.048 0.048 0.005"    
+        pos="0 0 -0.1"          
+        material="glass_mat"
+        mass="0.06"               
+        contype="65535"
+        conaffinity="65535"
+        condim="6"
+        friction="5.5 0.22 0.05"  
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1" />
+    </body>
+    
+    <!-- Green square bottle (right pedestal, right coaster) -->
+    <body name="green_bottle_body3" pos="0.05 4.5 0.9500000000000001">
+      <joint name="green_bottle_free3" type="free"/>
+      <geom name="green_bottle_body3" type="box" size="0.025 0.025 0.14" material="glass_green" mass="0.3"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_base3" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_neck3" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+
+    <!-- Yellow square bottle (right pedestal, left coaster) -->
+    <body name="yellow_bottle_body3" pos="0.2 4.5 0.9500000000000001">
+      <joint name="yellow_bottle_free3" type="free"/>
+      <geom name="yellow_bottle_body3" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.3"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_base3" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_neck3" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+    
+            <!-- ==================== ROBOT 4 SCENE ==================== -->
+
+    <!-- Robot 4 -->
+    <body name="robot4" pos="0.05 5.8 0">
+      <attach model="so101" body="base" prefix="so101_2_"/>
+    </body>
+
+    <!-- Bar wall for robot 4 -->
+    <body name="bar_wall4" pos="-1.0 6.0 0.4">
+      <geom type="box" size="0.1 1.0 0.8" material="bar_mat" density="2000" contype="1" conaffinity="1"/>
+    </body>
+
+    <!-- Table for robot 4 (raised +0.1) -->
+    <body name="table4" pos="0.8 6.0 0.3">
+      <geom type="box" size="0.3 0.9 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <body name="table_2_4" pos="0.2 6.6 0.3">
+      <geom type="box" size="0.3 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+    <body name="table_3_4" pos="0.2 5.4 0.3">
+      <geom type="box" size="0.3 0.2 0.55" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
+    </body>
+
+
+    <!-- Small center coaster on the table (reference for cups) -->
+    <body name="center_coaster4" pos="0.63 6.0 0.8500000000000001">
+      <geom type="cylinder" size="0.07 0.01" material="coaster_mat" contype="0" conaffinity="0"/>
+    </body>
+
+    <body name="beer_glass4" pos="0.13 5.5 0.9500000000000001">
+      <joint name="beer_glass_free4" type="free" />
+      <!-- Outer glass (square / box shape) -->
+      <geom type="box"
+        size="0.03 0.03 0.10"
+        material="glass_mat"
+        mass="0.35"
+        contype="65535" conaffinity="65535" condim="6"
+        friction="5.8 0.25 0.05"
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1"/>
+
+
+      <geom name="beer_glass_base4"
+        type="box"
+        size="0.048 0.048 0.005"    
+        pos="0 0 -0.1"          
+        material="glass_mat"
+        mass="0.06"               
+        contype="65535"
+        conaffinity="65535"
+        condim="6"
+        friction="5.5 0.22 0.05"  
+        solimp="0.95 0.995 0.0005"
+        solref="0.004 1" />
+    </body>
+    
+    <!-- Green square bottle (right pedestal, right coaster) -->
+    <body name="green_bottle_body4" pos="0.05 6.5 0.9500000000000001">
+      <joint name="green_bottle_free4" type="free"/>
+      <geom name="green_bottle_body4" type="box" size="0.025 0.025 0.14" material="glass_green" mass="0.3"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_base4" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="green_bottle_neck4" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_green"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+
+    <!-- Yellow square bottle (right pedestal, left coaster) -->
+    <body name="yellow_bottle_body4" pos="0.2 6.5 0.9500000000000001">
+      <joint name="yellow_bottle_free4" type="free"/>
+      <geom name="yellow_bottle_body4" type="box" size="0.035 0.035 0.14" material="glass_yellow" mass="0.3"
+            contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_base4" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_yellow"
+            mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+      <geom name="yellow_bottle_neck4" type="box" size="0.012 0.012 0.06" pos="0 0 0.20" material="glass_yellow"
+            mass="0.09" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
+    </body>
+    
 
   </worldbody>
 </mujoco>

@@ -14,3 +14,4 @@ finetuning/datasets/
 finetuning/example_pouring/videos/*
 example_gifs/imagesforgif/
 example_gifs/recording*
+franka_emika_panda/

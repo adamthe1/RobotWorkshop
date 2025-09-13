@@ -111,8 +111,6 @@ class MuJoCoServer:
         self.logger.info(f"RobotBodyControl initialized with robots: {self.robot_dict}")
 
 
-
-
     def load_saved_state_if_enabled(self) -> bool:
         """Load a single-robot joint-only state and apply to all robots.
 
@@ -131,10 +129,7 @@ class MuJoCoServer:
         try:
             base = os.getenv("MAIN_DIRECTORY") or str(Path.cwd())
             # Allow explicit override via env
-            override = os.getenv("REPLAY_SAVED_STATE_DIR", "").strip()
             search_dirs = []
-            if override:
-                search_dirs.append(Path(override))
             search_dirs.append(Path(base) / "xml_robots" / "saved_state")
             search_dirs.append(Path(base) / "finetuning" / "saved_robot_states")
 
