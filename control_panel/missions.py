@@ -5,11 +5,9 @@ SUPPORTED_MISSIONS = {
         "reset before new mission"
     ],
     
-    "pour margarita": [
-        "pick up green bottle",
-        "pour bottle into cup",
-        "stop pouring bottle",
-        "put down bottle",
+    "pour mojito": [
+        "place_cup_on_bar",
+        "pour_mojito_bottle",
         "reset before new mission"
     ],
 
@@ -24,5 +22,5 @@ SUPPORTED_MISSIONS = {
 }
 
 SUPPORTED_MISSIONS_PER_ROBOT = {
-    "FrankaPanda": ["placeCupOnBar", "testC", "pour beer"],
+    "FrankaPanda": ["placeCupOnBar", "testC", "pour beer", "pour mojito"],
     "SO101": ["placeCupOnBar"]}

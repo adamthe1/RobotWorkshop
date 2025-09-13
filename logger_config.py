@@ -151,16 +151,16 @@ class GlobalLogger:
         logging.getLogger('RobotQueue').setLevel(logging.INFO)
         logging.getLogger('MainOrchestrator').setLevel(logging.INFO)
         logging.getLogger('CLI').setLevel(logging.INFO)
-        logging.getLogger('BrainServer').setLevel(logging.DEBUG)
-        logging.getLogger('BrainClient').setLevel(logging.DEBUG)
+        logging.getLogger('BrainServer').setLevel(logging.INFO)
+        logging.getLogger('BrainClient').setLevel(logging.INFO)
         
         logging.getLogger('MujocoServer').setLevel(logging.DEBUG)
         logging.getLogger('ActionManager').setLevel(logging.DEBUG)
         logging.getLogger('MujocoClient').setLevel(logging.INFO)
         logging.getLogger('PhysicsStateExtractor').setLevel(logging.INFO)
         logging.getLogger('RobotBodyControl').setLevel(logging.INFO)
-        logging.getLogger('PolicyInference').setLevel(logging.DEBUG)
-        logging.getLogger('PolicyControl').setLevel(logging.DEBUG)
+        logging.getLogger('PolicyInference').setLevel(logging.INFO)
+        logging.getLogger('PolicyControl').setLevel(logging.INFO)
         logging.getLogger('EpisodeActionMapper').setLevel(logging.INFO)
 
     def get_logger(self, name):

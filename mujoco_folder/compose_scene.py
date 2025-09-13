@@ -169,8 +169,8 @@ def get_scene1(i, j, pos_with_offset):
     coaster_h =  0.01                 # thin coaster halfheight
     # Beer glass: add 1mm clearance so it settles without a jump
     beer_glass_pos = (0.13, -0.5, initial_z+table_top_z+0.1)
-    green_bottle_pos = (0.05, 0.5, initial_z+table_top_z+0.1)
-    yellow_bottle_pos = (0.2, 0.5, initial_z+table_top_z+0.1)
+    green_bottle_pos = (0.02, 0.5, initial_z+table_top_z+0.1)
+    yellow_bottle_pos = (0.2, 0.47, initial_z+table_top_z+0.1)
 
     return f'''
 
@@ -228,7 +228,7 @@ def get_scene1(i, j, pos_with_offset):
     <!-- Green square bottle (right pedestal, right coaster) -->
     <body name="green_bottle_body{i}" pos="{pos_with_offset(green_bottle_pos[0], green_bottle_pos[1], green_bottle_pos[2], j)}">
       <joint name="green_bottle_free{i}" type="free"/>
-      <geom name="green_bottle_body{i}" type="box" size="0.035 0.035 0.14" material="glass_green" mass="0.3"
+      <geom name="green_bottle_body{i}" type="box" size="0.025 0.025 0.14" material="glass_green" mass="0.3"
             contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
       <geom name="green_bottle_base{i}" type="box" size="0.048 0.048 0.005" pos="0 0 -0.135" material="glass_green"
             mass="0.02" contype="1" conaffinity="1" condim="6" friction="5.408 0.2366 0.04225" solimp="0.95 0.995 0.0005" solref="0.004 1" />
