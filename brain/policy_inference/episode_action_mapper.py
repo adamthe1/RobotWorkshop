@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import os
-import json
-from typing import Dict, List, Optional
+from pathlib import Path
+from typing import Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -14,291 +14,310 @@ load_dotenv()
 
 class EpisodeActionMapper:
     """
-    Deterministic episode action replayer for the new folder layout:
-      finetuning/mission_episodes/<robot_type>/<mission>/<sub_mission>.parquet
+    Minimal episode action replayer that serves actions from a saved parquet.
 
-    Exact-parity goal: returns the recorded action vectors as-is, with no
-    remapping, scaling, or resampling. This ensures playback matches recording.
+    Assumptions (matching our recorder):
+    - Parquet has an 'action' column with per-frame joint target arrays (list-like)
+    - Action dimensionality matches the robot actuators used by the server
+      (RobotBodyControl applies by filtering actuators with name prefix robot_id_)
+
+    Basic use:
+    - mapper = EpisodeActionMapper(path)
+    - action = mapper.next_action(robot_id, joint_names, qpos, qvel)
+
+    This class is intentionally simple and deterministic to be safe.
     """
 
     def __init__(self, robot_types: List[str]):
         self.logger = get_logger('EpisodeActionMapper')
-        self.main_dir = os.getenv("MAIN_DIRECTORY", os.getcwd())
-        base_path = os.path.join(self.main_dir, "finetuning", "mission_episodes")
-        self.types_to_paths = self._discover_mission_paths(robot_types, base_path)
+        self.main_dir = os.getenv("MAIN_DIRECTORY", "/home/adam/Documents/coding/autonomous")
+        mission_episode_paths = os.path.join(self.main_dir, "finetuning/mission_episodes")
+        self.types_to_missions_to_submissions = self.load_submission_paths(robot_types, mission_episode_paths)
+        self.build_actions_from_obs = True
+        self.slicing = 1
+        self.loop = False
+        self.speed = 6.0
+        self.episode_actions = {}
+        self.episode_lengths = {}
 
-        # Controls
-        self.loop: bool = False  # keep simple and deterministic
-        # Time-warp without interpolation: >1.0 faster (skip), <1.0 slower (repeat)
-        self.replay_speed = 02.0
-        # Optional alternate source: derive actions from observation.state for parity
-        self.use_obs_as_action: bool = True
-
-        # Storage
-        # {(rt, mission, sub_mission): np.ndarray(T,A)}
-        self.episode_actions: Dict[tuple, np.ndarray] = {}
-        self.episode_lengths: Dict[tuple, int] = {}
-        # (rt, mission) -> ordered sub-missions list
-        self.mission_sub_missions: Dict[tuple, List[str]] = {}
-
-        # Load episodes for each robot type and mission
-        for rt, missions in self.types_to_paths.items():
-            for mission, mission_folder in missions.items():
-                sub_missions = SUPPORTED_MISSIONS.get(mission, [])
-                if not sub_missions:
-                    self.logger.warning(f"No sub-missions configured for mission '{mission}'")
-                    continue
-                self.mission_sub_missions[(rt, mission)] = sub_missions
-                for sm in sub_missions:
-                    p = os.path.join(mission_folder, f"{sm}.parquet")
-                    if not os.path.isfile(p):#??>>??
-                        self.logger.warning(f"Missing episode file for {rt}/{mission}/{sm}: {p}")
-                        self.episode_actions[(rt, mission, sm)] = np.empty((0, 0), dtype=float)
-                        self.episode_lengths[(rt, mission, sm)] = 0
-                        continue
-                    arr = self._load_parquet_actions_exact(p)
-                    # Optional: replace actions using observation.state with mapping
-                    if self.use_obs_as_action:
-                        mapped = self._try_build_actions_from_obs(mission_folder, p, expected_dim=int(arr.shape[1]))
-                        if mapped is not None:
-                            arr = mapped
-                    # Optional time-warp (stepwise, no interpolation)
-                    if self.replay_speed != 1.0 and arr.shape[0] > 1:
-                        arr = self._time_resample_stepwise(arr, self.replay_speed)
-                    key = (rt, mission, sm)
-                    self.episode_actions[key] = arr
-                    self.episode_lengths[key] = int(arr.shape[0])
-                    self.logger.info(f"Loaded {rt}/{mission}/{sm}: frames={arr.shape[0]} dim={arr.shape[1]}")
-
-        # Per-robot per-mission cursor
-        # {(robot_id, robot_type, mission): {'i_sub': int, 'i_frame': int}}
-        self.robot_mission_state: Dict[tuple, dict] = {}
-        # Optional per-robot reset tails served after mission frames finish
-        # {(robot_id, robot_type, mission): { 'frames': np.ndarray(T,A), 'idx': int }}
-        self._reset_tails: Dict[tuple, dict] = {}
-
-    # -------- Path discovery --------
-    def _discover_mission_paths(self, robot_types: List[str], base_path: str) -> Dict[str, Dict[str, str]]:
-        out: Dict[str, Dict[str, str]] = {}
         for rt in robot_types:
-            rt_dir = os.path.join(base_path, rt)
-            if not os.path.isdir(rt_dir):
-                self.logger.warning(f"Robot type directory not found: {rt_dir}")
+            missions = self.types_to_missions_to_submissions.get(rt, {})
+            for mission, submissions in missions.items():
+                if mission not in SUPPORTED_MISSIONS:
+                    self.logger.warning(f"Mission '{mission}' for robot type '{rt}' is not supported.")
+                for sub_mission, ep_path in submissions.items():
+                    self.logger.info(f"Loading episode for robot type {rt}, mission {mission}, sub-mission {sub_mission} from {ep_path}")
+                    if ep_path:
+                        try:
+                            self.episode_actions[(rt, mission, sub_mission)] = self._load_episode(ep_path)
+                            self.episode_lengths[(rt, mission, sub_mission)] = len(self.episode_actions[(rt, mission, sub_mission)])
+                        except Exception as e:
+                            self.logger.error(f"Failed to load episode for robot type {rt}, mission {mission}, sub-mission {sub_mission}: {e}")
+                            raise
+
+        self.robot_id_dict = {}
+
+    def load_submission_paths(self, robot_types: List[str], base_path: str) -> Dict[str, Dict[str, Dict[str, str]]]:
+        """Load mapping of robot types to missions to episode parquet paths."""
+        type_to_missions_to_submissions = {}
+        for rt in robot_types:
+            rt_path = os.path.join(base_path, rt)
+            if not os.path.isdir(rt_path):
+                self.logger.warning(f"Robot type directory not found: {rt_path}")
                 continue
-            missions: Dict[str, str] = {}
-            for mission in SUPPORTED_MISSIONS:
-                m_dir = os.path.join(rt_dir, mission)
-                if os.path.isdir(m_dir):
-                    missions[mission] = m_dir
+            missions = {}
+            for mission, sub_missions in SUPPORTED_MISSIONS.items():
+                submissions = {}
+                mission_path = os.path.join(rt_path, mission)
+                if not os.path.isdir(mission_path):
+                    self.logger.warning(f"Mission directory not found for {rt}: {mission_path}")
+                    continue
+                for sub_mission in sub_missions:
+                    sub_mission_file = f"{sub_mission}.parquet"
+                    sub_mission_path = os.path.join(mission_path, sub_mission_file)
+                    if not os.path.isfile(sub_mission_path):
+                        self.logger.warning(f"Mission file not found for {rt}: {sub_mission_path}")
+                        continue
+                    submissions[sub_mission] = sub_mission_path
+                if submissions:
+                    missions[mission] = submissions
             if missions:
-                out[rt] = missions
-        return out
-
-    # -------- Parquet loading --------
-    def _load_parquet_actions_exact(self, path: str) -> np.ndarray:
-        """Load 'action' column and return ndarray(T, A) with strict parity.
-
-        - No scaling, no interpolation, no reordering/permutation.
-        - Filters out rows that do not match the most common action dimension
-          to avoid shape glitches.
-        """
-        df = pd.read_parquet(path)
-        if 'action' not in df.columns:
-            raise ValueError(f"{path} missing required 'action' column")
-        actions = df['action'].tolist()
-        # Determine most common length to enforce consistency
-        lengths = {}
-        for idx, a in enumerate(actions):
-            n = int(np.asarray(a, dtype=float).size)
-            lengths[n] = lengths.get(n, 0) + 1
-        if not lengths:
-            raise ValueError(f"{path} contains no action data")
-        target_dim = max(lengths.items(), key=lambda kv: kv[1])[0]
-        filtered: List[np.ndarray] = []
-        skipped = 0
-        for i, a in enumerate(actions):
-            arr = np.asarray(a, dtype=float).ravel()
-            if arr.size == target_dim:
+                type_to_missions_to_submissions[rt] = missions
+        return type_to_missions_to_submissions
+    
+    def _load_episode(self, p: str) -> np.ndarray:
+        if not os.path.isfile(p):
+            error_msg = f"Parquet file not found: {p}"
+            self.logger.error(error_msg)
+            raise FileNotFoundError(error_msg)
+        
+        if self.build_actions_from_obs:
+            actions = self._try_build_actions_from_obs(
+                parquet_path=p,
+                expected_dim=8  # Assuming 7 joints + 1 gripper
+            )
+        else:
+            self.logger.warning(f"Falling back to 'action' column for episode at {p}")
+            df = pd.read_parquet(p)
+            if 'action' not in df.columns:
+                error_msg = "Parquet missing 'action' column"
+                self.logger.error(error_msg)
+                raise ValueError(error_msg)
+            # Normalize actions to np.ndarray of shape (T, A)
+            actions = df['action'].tolist()
+        
+        if actions is None:
+            error_msg = f"Failed to load actions for episode at {p}"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        if self.slicing > 1:
+            actions = actions[::self.slicing]
+       
+        # Filter actions to ensure all are the same length
+        filtered = []
+        expected_dim = None
+        for i, act in enumerate(actions):
+            arr = np.array(act, dtype=float).ravel()
+            if expected_dim is None:
+                expected_dim = len(arr)
+            if len(arr) == expected_dim:
                 filtered.append(arr)
             else:
-                skipped += 1
-        if skipped:
-            self.logger.warning(f"{path}: skipped {skipped} rows due to dim mismatch; using dim={target_dim}")
+                self.logger.warning(f"Skipping action {i} (dim {len(arr)} != {expected_dim})")
+        
         if not filtered:
-            raise ValueError(f"{path}: no rows with consistent action dim")
-        return np.stack(filtered, axis=0)
+            error_msg = "No valid actions after filtering"
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
+        
+        actions = np.stack(filtered)
+        if self.speed != 1.0:
+            actions = self._time_resample(actions, self.speed)
+        return actions
 
-    def _try_build_actions_from_obs(self, mission_folder: str, parquet_path: str, expected_dim: int) -> Optional[np.ndarray]:
-        """If obs_to_action.json exists in mission folder, build action frames from observation.state.
+    def _try_build_actions_from_obs(
+        self,
+        parquet_path: str,
+        expected_dim: int
+    ) -> Optional[np.ndarray]:
+        """
+        Construct an action matrix from the 'observation.state' column in a Parquet file.
 
-        obs_to_action.json format:
-        {
-          "indices": [i0, i1, ..., iA-1]  // indices into observation.state picking joint qpos
-        }
+        Behavior:
+        - Uses the first N elements of each observation vector as the robot joint values,
+        where N = int(os.getenv("REPLAY_OBS_FIRST_N", "7")).
+        - Skips rows whose observation vector is too short.
+        - If 'expected_dim' is larger than the chosen dimension:
+            * If 'action' column exists, append the (expected_dim-1)-th value from it
+            (commonly the gripper channel). Fallback = 0.0 if unavailable.
+            * Otherwise, pad the missing dimensions with zeros.
 
-        Returns ndarray(T,A) or None on failure.
+        Returns:
+            np.ndarray of shape (T, expected_dim) on success, or None on failure.
         """
         try:
-            sidecar = os.path.join(mission_folder, "obs_to_action.json")
-            use_sidecar = os.path.isfile(sidecar)
-            idxs = None
-            if use_sidecar:
-                spec = json.load(open(sidecar, "r"))
-                idxs = spec.get("indices")
-                if not isinstance(idxs, list) or not idxs:
-                    self.logger.warning(f"Invalid obs_to_action.json (no indices): {sidecar}")
-                    use_sidecar = False
+            # ---------- Load the parquet ----------
             df = pd.read_parquet(parquet_path)
-            if 'observation.state' not in df.columns:
+            if "observation.state" not in df.columns:
                 self.logger.warning(f"{parquet_path} has no 'observation.state' column")
                 return None
-            obs = df['observation.state'].tolist()
-            # Determine mapping indices
-            if not use_sidecar:
-                # Heuristic: take first N qpos as robot joints
-                N = int(os.getenv('REPLAY_OBS_FIRST_N', '7'))
-                idxs = list(range(N))
-            # Build framesbu
-            filtered: List[np.ndarray] = []
-            for row in obs:
-                arr = np.asarray(row, dtype=float).ravel()
-                if max(idxs) >= arr.size:
+
+            # ---------- Select indices (always heuristic now) ----------
+            n_joints = self.replay_first_n_joints = 7
+            indices = list(range(n_joints))
+
+            # ---------- Extract per-row actions ----------
+            obs_series = df["observation.state"].tolist()
+            action_rows: List[np.ndarray] = []
+
+            for obs_row in obs_series:
+                obs_vec = np.asarray(obs_row, dtype=float).ravel()
+                if obs_vec.size <= max(indices):
                     continue
-                sel = arr[idxs]
-                filtered.append(sel)
-            if not filtered:
-                self.logger.warning(f"{parquet_path}: could not map any observation rows with given indices")
+                action_rows.append(obs_vec[indices])
+
+            if not action_rows:
+                self.logger.warning(
+                    f"{parquet_path}: could not map any observation rows with indices {indices}"
+                )
                 return None
-            out = np.stack(filtered, axis=0)
-            # If expected_dim indicates gripper present, try to append from original action column if available
-            if expected_dim > out.shape[1]:
-                if 'action' in df.columns:
-                    acts = df['action'].tolist()
-                    app: List[float] = []
-                    for a in acts[:out.shape[0]]:
-                        av = np.asarray(a, dtype=float).ravel()
-                        if av.size >= expected_dim:
-                            app.append(float(av[expected_dim-1]))
+
+            actions = np.stack(action_rows, axis=0)
+
+            # ---------- Ensure output has expected_dim ----------
+            current_dim = actions.shape[1]
+            if expected_dim > current_dim:
+                missing = expected_dim - current_dim
+
+                if "action" in df.columns:
+                    # Try to extract gripper (or similar) from original 'action' column
+                    source_actions = df["action"].tolist()
+                    appended_vals: List[float] = []
+                    row_count = actions.shape[0]
+
+                    for raw in source_actions[:row_count]:
+                        a = np.asarray(raw, dtype=float).ravel()
+                        if a.size >= expected_dim:
+                            appended_vals.append(float(a[expected_dim - 1]))
                         else:
-                            app.append(0.0)
-                    out = np.hstack([out, np.array(app, dtype=float).reshape(-1, 1)])
+                            appended_vals.append(0.0)
+
+                    actions = np.hstack(
+                        [actions, np.array(appended_vals, dtype=float).reshape(-1, 1)]
+                    )
+
+                    # If still short, pad with zeros
+                    if actions.shape[1] < expected_dim:
+                        pad_cols = expected_dim - actions.shape[1]
+                        actions = np.hstack(
+                            [actions, np.zeros((actions.shape[0], pad_cols), dtype=float)]
+                        )
                 else:
-                    # Fallback constant gripper
-                    out = np.hstack([out, np.full((out.shape[0], expected_dim - out.shape[1]), 0.0, dtype=float)])
-            src = sidecar if use_sidecar else f"first_{len(idxs)}_obs"
-            self.logger.info(f"Using observation.state as actions via {src}; dim={out.shape[1]}")
-            return out
+                    # No 'action' column: pad all missing dims with zeros
+                    actions = np.hstack(
+                        [actions, np.zeros((actions.shape[0], missing), dtype=float)]
+                    )
+
+            self.logger.info(
+                f"Using observation.state as actions via first_{len(indices)}_obs; dim={actions.shape[1]}"
+            )
+            return actions
+
         except Exception as e:
             self.logger.warning(f"Failed building actions from obs for {parquet_path}: {e}")
             return None
 
-    def _time_resample_stepwise(self, frames: np.ndarray, speed: float) -> np.ndarray:
-        """Stepwise time resample to change playback speed without altering values.
+    def reset(self, robot_id: Optional[str] = None):
+        """Reset cursor to beginning - robot_id parameter ignored for compatibility"""
+        result = self.robot_id_dict.pop(robot_id, None)
+        if result is None:
+            self.logger.warning(f"Reset called for unknown robot_id: {robot_id}")
 
-        - speed > 1.0: faster → skip frames with integer stride ~speed
-        - speed < 1.0: slower → repeat each frame ~1/speed times
+    def next_action(self, robot_id: str, robot_type: str, mission: str, submission: str) -> List[float]:
         """
-        if speed == 1.0 or frames.shape[0] <= 1:
-            return frames
-        if speed > 1.0:
-            stride = max(1, int(round(speed)))
-            return frames[::stride]
-        # speed < 1.0
-        reps = max(1, int(round(1.0 / max(1e-9, speed))))
-        return np.repeat(frames, reps, axis=0)
+        Return the next action - robot_id parameter ignored for compatibility.
+        
+        For now this replays sequentially. It does not yet align by state/timestamp,
+        but that can be added (e.g., nearest-neighbor on state or by stored timestamps).
+        """
+        self.logger.debug(f"Next action requested for robot_id: {robot_id}, type: {robot_type}, mission: {mission}")
+        if robot_id not in self.robot_id_dict:
+            self.robot_id_dict[robot_id] = 0
+        idx = self.robot_id_dict[robot_id]
+        self.robot_id_dict[robot_id] = idx + 1
+        
+        episode_key = (robot_type, mission, submission)
+        episode_length = self.episode_lengths.get(episode_key, 0)
+        
+        if idx >= episode_length:
+            if self.loop and episode_length > 0:
+                idx = 0
+                self.robot_id_dict[robot_id] = 1
+            else:
+                # No more actions; return zeros with appropriate length if possible
+                if episode_key in self.episode_actions and len(self.episode_actions[episode_key]) > 0:
+                    length = len(self.episode_actions[episode_key][0])
+                else:
+                    length = 8  # fallback to expected_dim
+                return [0.0] * length
 
-    def next_action(self, robot_id: str, robot_type: str, mission: str) -> List[float]:
-        # Reserved auto-reset mission: serve synthesized reset sequence regardless of dataset
-        if mission == "__auto_reset__":
-            tail_key = (robot_id, robot_type, mission)
-            tail = self._reset_tails.get(tail_key)
-            if tail is None:
-                synth = self._build_synthetic_reset(robot_type, mission)
-                if synth is not None and synth.shape[0] > 0:
-                    self._reset_tails[tail_key] = {'frames': synth, 'idx': 0}
-                    tail = self._reset_tails[tail_key]
-            if tail is not None:
-                frames = tail['frames']
-                idx = tail['idx']
-                if idx < frames.shape[0]:
-                    out = frames[idx].astype(float).ravel()
-                    tail['idx'] = idx + 1
-                    return out.tolist()
-                # tail finished
-                self._reset_tails.pop(tail_key, None)
-            return self._zeros_for_mission(robot_type, mission)
+        try:
+            act = self.episode_actions[episode_key][idx]
+        except KeyError:
+            error_msg = f"Episode not found for key {episode_key}"
+            self.logger.error(error_msg)
+            raise KeyError(error_msg)
+        except IndexError:
+            error_msg = f"Action index {idx} out of range for episode {episode_key}"
+            self.logger.error(error_msg)
+            raise IndexError(error_msg)
+        
+        self.logger.debug(f"Action for robot_id {robot_id} at idx {idx}: {act}")
+        # Convert to flat list of floats
+        if isinstance(act, np.ndarray):
+            act_out = act.astype(float).ravel().tolist()
+        else:
+            act_out = [float(x) for x in act]
+            
+        return act_out
 
-        key_state = (robot_id, robot_type, mission)
-        if key_state not in self.robot_mission_state:
-            self.robot_mission_state[key_state] = {'i_sub': 0, 'i_frame': 0}
-
-        state = self.robot_mission_state[key_state]
-        sub_list = self.mission_sub_missions.get((robot_type, mission), [])
-        if not sub_list:
-            self.logger.error(f"No sub-missions for {robot_type}/{mission}")
-            return self._zeros_for_mission(robot_type, mission)
-
-        # Advance across sub-missions as frames are exhausted
-        while state['i_sub'] < len(sub_list):
-            sm = sub_list[state['i_sub']]
-            key = (robot_type, mission, sm)
-            arr = self.episode_actions.get(key)
-            if arr is None or arr.shape[0] == 0:
-                self.logger.warning(f"Empty or missing actions for {key}; skipping")
-                state['i_sub'] += 1
-                state['i_frame'] = 0
-                continue
-            if state['i_frame'] >= arr.shape[0]:
-                state['i_sub'] += 1
-                state['i_frame'] = 0
-                continue
-            out = arr[state['i_frame']].astype(float).ravel()
-            state['i_frame'] += 1
-            return out.tolist()
-
-        # Completed everything
-        if self.loop and sub_list:
-            state['i_sub'] = 0
-            state['i_frame'] = 0
-            return self.next_action(robot_id, robot_type, mission)
-        return self._zeros_for_mission(robot_type, mission)
-
-    # -------- Progress --------
-    def get_progress(self, robot_id: str, robot_type: str, mission: str) -> float:
-        """Return progress through the mission as a float in [0, 1]."""
-
-        key_state = (robot_id, robot_type, mission)
-        state = self.robot_mission_state.get(key_state)
-        sub_list = self.mission_sub_missions.get((robot_type, mission), [])
-        if not state or not sub_list:
+    def get_progress(self, robot_id: str, robot_type: str, mission: str, submission: str) -> float:
+        """Return progress through the episode as a float in [0, 1]."""
+        if robot_id not in self.robot_id_dict:
+            self.logger.warning(f"Progress requested for unknown robot_id: {robot_id}")
             return 0.0
-        total = 0
-        done = 0
-        for i, sm in enumerate(sub_list):
-            key = (robot_type, mission, sm)
-            n = self.episode_lengths.get(key, 0)
-            total += n
-            if i < state['i_sub']:
-                done += n
-            elif i == state['i_sub']:
-                done += min(state['i_frame'], n)
-        base = 0.0 if total == 0 else min(done / total, 1.0)
-        return base
+        
+        episode_key = (robot_type, mission, submission)
+        episode_length = self.episode_lengths.get(episode_key, 1)
+        return min(self.robot_id_dict[robot_id] / max(1, episode_length), 1.0)
 
-
-    # -------- Utilities --------
     def load_type(self, robot_type: str) -> bool:
+        """Load type for compatibility - no-op."""
         return True
 
-    def _zeros_for_mission(self, robot_type: str, mission: str) -> List[float]:
-        # Try to infer from any loaded sub-mission of this mission
-        sub_list = self.mission_sub_missions.get((robot_type, mission), [])
-        for sm in sub_list:
-            arr = self.episode_actions.get((robot_type, mission, sm))
-            if arr is not None and arr.size > 0:
-                return [0.0] * int(arr.shape[1])
-        # Fallback: any other loaded episode
-        for key, arr in self.episode_actions.items():
-            if isinstance(key, tuple) and len(key) == 3 and arr is not None and arr.size > 0:
-                return [0.0] * int(arr.shape[1])
-        return [0.0]
+    def _time_resample(
+        self,
+        frames: np.ndarray,
+        speed: float,
+    ) -> np.ndarray:
+        """
+        Resample along time to implement playback speed.
+        - frames: ndarray (T, A)
+        - speed > 1.0: slower (more frames, interpolated)
+        - speed < 1.0: faster (fewer frames, skip)
+        """
+        if speed == 1.0 or frames.shape[0] == 0:
+            return frames
+
+        T, A = frames.shape
+        new_T = max(1, int(round(T / speed)))
+        if new_T == T:
+            return frames
+
+        old_t = np.linspace(0.0, 1.0, num=T, endpoint=True)
+        new_t = np.linspace(0.0, 1.0, num=new_T, endpoint=True)
+        out = np.empty((new_T, A), dtype=float)
+        for d in range(A):
+            out[:, d] = np.interp(new_t, old_t, frames[:, d])
+        return out

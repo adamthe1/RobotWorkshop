@@ -2,13 +2,13 @@ SUPPORTED_MISSIONS = {
     "pour beer": [
         "place_cup_on_bar",
         "pour_beer_bottle",
-        "reset before new mission"
+        "reset_before_new_mission"
     ],
     
     "pour mojito": [
         "place_cup_on_bar",
         "pour_mojito_bottle",
-        "reset before new mission"
+        "reset_before_new_mission"
     ],
 
     "placeCupOnBar": [
@@ -17,7 +17,9 @@ SUPPORTED_MISSIONS = {
     ],
 
     "testC": [
-        "tst"
+        "test1",
+        "test2",
+        "reset_before_new_mission"
     ]
 }
 

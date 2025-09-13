@@ -78,26 +78,26 @@ class MissionManager:
         if not packet or packet.mission is None:
             raise ValueError("Invalid packet provided")
         
-        if packet.mission_status == 'completed':
-            return self.reset_packet(packet)
-        
         packet.mission_status = 'ongoing'
         
         if packet.submission is None:
+            # added support for completion with episode mapper
             packet = self.get_next_submission(packet)
             self.logger.debug(f"adding first submission to packet {packet.submission} for mission {packet.mission}")
             return packet
-        
+        self.logger.debug(f"Checking status for submission {packet.submission} status {packet.submission_status}")
         result = self.status_checker.sub_mission_status(packet)
 
         packet.submission_status = "completed" if result['done'] else "ongoing"
 
         if result['done']:
+            self.logger.debug(f"Submission {packet.submission} completed for mission {packet.mission}")
             if self.is_last_submission(packet):
                 packet.mission_status = 'completed'
                 return self.reset_packet(packet)
             else:
                 packet = self.get_next_submission(packet)
+                packet.submission_status = None
                 return packet
             
         return packet

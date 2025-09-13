@@ -32,6 +32,9 @@ class MissionStatus:
         Returns:
             - {'subtask': predicted_submission, 'done': bool}
         """
+        if packet.submission_status == 'episode_done':
+            self.logger.debug(f"Submission {packet.submission} marked as episode_done, moving to next.")
+            return {'subtask': packet.submission, 'done': True}
         if self.vision_model is None:
             if packet.submission in self.submission_counter:
                 self.submission_counter[packet.submission] += 1

@@ -30,7 +30,8 @@ class Preprocessing:
         preprocessed_data['qvel'] = packet.qvel if packet.qvel is not None else np.zeros(7)
         preprocessed_data['wall_camera'] = packet.wall_camera if packet.wall_camera is not None else np.zeros((64, 64, 3))
         preprocessed_data['wrist_camera'] = packet.wrist_camera if packet.wrist_camera is not None else np.zeros((64, 64, 3))
-        preprocessed_data['prompt'] = packet.mission if hasattr(packet, 'mission') else ""
+        preprocessed_data['prompt'] = packet.submission if hasattr(packet, 'submission') else ""
+        preprocessed_data['mission'] = packet.mission if hasattr(packet, 'mission') else ""
         return preprocessed_data
 
     def convert_packet_to_tensor(self, packet):

@@ -68,12 +68,12 @@ class PolicyInference:
             policy_item = self.preprocesser.preprocess(packet)
             action_reply = self.get_policy_action(policy_item, robot_id)
             action = action_reply.get('action', None)
-            mission_status = action_reply.get('mission_status', None)
+            submission_status = action_reply.get('submission_status', None)
 
         except Exception as e:
             self.logger.error(f"Policy inference failed, falling back to dummy: {e}")
             action = None
-            mission_status = None
+            submission_status = None
 
         if action is None:
             # Fallback: dummy small random action with plausible dim
@@ -82,9 +82,9 @@ class PolicyInference:
 
         # Fill the action in the packet
         packet.action = action
-        if mission_status is not None:
-            packet.mission_status = mission_status
-        
+        if submission_status is not None:
+            packet.submission_status = submission_status
+
         time_taken = time.time() - time_now
         self.logger.debug(f"Action generated for robot {robot_id} in {time_taken:.2f} seconds")
         
@@ -93,20 +93,20 @@ class PolicyInference:
     def get_policy_action(self, policy_item, robot_id):
         # Implement action inference logic based on the observation
         policy_name, policy = self.policy_manager.get_policy_for_robot_id(robot_id)
-        self.logger.debug(f"Using policy '{policy_name}' for robot {robot_id} of type {self.robot_dict.get(robot_id, 'Unknown')}")
+        # self.logger.debug(f"Using policy '{policy_name}' for robot {robot_id} of type {self.robot_dict.get(robot_id, 'Unknown')}")
         
-        reply = {'action': None, 'mission_status': None}
+        reply = {'action': None, 'submission_status': None}
         if policy_name == 'Episode':
             robot_type = self.robot_dict.get(robot_id, None)
-            mission_name = policy_item.get('prompt', '')
-            reply['action'] = policy.next_action(robot_id, robot_type, mission_name)
-            progress = policy.get_progress(robot_id, robot_type, mission_name)
-            # If mapper is serving a reset tail, don't mark completed yet
-            reset_pending = False
-            self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}% reset_pending={reset_pending} action: {reply['action']}")
-            if progress == 1.0 and not reset_pending:
-                reply['mission_status'] = 'completed'
-                self.logger.info(f"REPLAY: Robot {robot_id} mission completed")
+            submission_name = policy_item.get('prompt', '')
+            mission_name = policy_item.get('mission', '')
+            reply['action'] = policy.next_action(robot_id, robot_type, mission_name, submission_name)
+            progress = policy.get_progress(robot_id, robot_type, mission_name, submission_name)
+            self.logger.debug(f"REPLAY: Robot {robot_id} progress: {progress*100:.1f}% submission: {submission_name}")
+            if progress == 1.0:
+                reply['submission_status'] = 'episode_done'
+                self.logger.info(f"REPLAY: Robot {robot_id} submission {submission_name} completed")
+                policy.reset(robot_id)
         return reply
 
     def get_dummy_action(self, robot_id):
