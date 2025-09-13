@@ -15,3 +15,5 @@ finetuning/example_pouring/videos/*
 example_gifs/imagesforgif/
 example_gifs/recording*
 franka_emika_panda/
+brain/octo_inference.py 
+franka_emika_panda
