@@ -87,7 +87,7 @@ class MainOrchestrator:
             packet.mission = result['mission']
             mission = result['mission']
             time.sleep(0.3)
-        
+
         self.logger.info(f"Robot {robot_id} assigned mission: {packet}")
 
         while self.running:
@@ -96,6 +96,7 @@ class MainOrchestrator:
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
                 packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Received robot state: {packet.qpos}")
+
                 
                 if packet is None:
                     self.logger.error(f"Packet is None from Mujoco for robot {robot_id}")
