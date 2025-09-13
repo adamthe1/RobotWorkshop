@@ -24,3 +24,4 @@ class RobotListPacket:
     robot_id: str = 'robot_list'
     robot_list: List[str] = None
     robot_dict: Optional[dict] = None
+    

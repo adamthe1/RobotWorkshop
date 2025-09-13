@@ -69,6 +69,7 @@ class MissionManager:
             return {'robot_id': None, 'mission': None}
         if self.queue_client.see_next_robot() == robot_id:
             # remove mission from queue
+            print(f"{robot_id} is preparing your drink right now, please come to it's bar to pick it up")
             return self.queue_client.get_robot_mission_pair()
         else:
             return {'robot_id': None, 'mission': None}
@@ -85,6 +86,7 @@ class MissionManager:
         
         if packet.submission is None:
             packet = self.get_next_submission(packet)
+
             self.logger.debug(f"adding first submission to packet {packet.submission} for mission {packet.mission}")
             return packet
         
