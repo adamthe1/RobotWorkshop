@@ -160,10 +160,3 @@ Increase `FRANKA_PANDA_COUNT` and `SO101_COUNT` to add more robots. GPU renderin
 
 Beyond the core settings above, these control replay and state handling (add to `.env` as needed):
 - CONTROL_HZ: Control/replay loop frequency in Hz (default 60).
-- REPLAY_SPEED: Time-warp without interpolation (default 1.0; >1 skips frames, <1 repeats frames).
-- REPLAY_USE_OBS_AS_ACTION: Use `observation.state` to build actions (0/1; default 0).
-- REPLAY_OBS_FIRST_N: When no sidecar file exists, number of initial obs indices to treat as joints (default 7).
-- REPLAY_SAVED_STATE_DIR: Override directory for saved-state `.npz` used for synthetic resets.
-- RESET_HOLD_SECONDS: Duration to hold reset targets (default 2.0 seconds).
-- NO_CAMERA_IN_STATE: Exclude camera data from saved state if set (0/1; default 0).
-- USE_TEST_MAPPER / USE_REPLAY_MAPPER: Optional brain mappers toggles (0/1; default 0).

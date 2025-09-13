@@ -3,6 +3,11 @@ from __future__ import annotations
 import glfw
 import mujoco
 import os
+from datetime import datetime
+from typing import List, Optional
+
+import numpy as np
+from PIL import Image
 
 
 class LightweightViewer:
@@ -33,6 +38,10 @@ class LightweightViewer:
         self._last_y = None
         self._left_down = False
         self._right_down = False
+        # Recording state
+        self._recording: bool = False
+        self._frames: List[Image.Image] = []
+        self._record_fps: int = 30
 
     def launch(self) -> "LightweightViewer":
         if not glfw.init():
@@ -76,6 +85,11 @@ class LightweightViewer:
         """Handle keyboard input"""
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
             pass
+        if key == glfw.KEY_R and action == glfw.PRESS:
+            if not self._recording:
+                self._start_recording()
+            else:
+                self._stop_recording()
 
 
     def is_running(self) -> bool:
@@ -99,6 +113,10 @@ class LightweightViewer:
         fb_w, fb_h = glfw.get_framebuffer_size(self.window)
         viewport = mujoco.MjrRect(0, 0, fb_w, fb_h)
         mujoco.mjr_render(viewport, self.scn, self.ctx)
+
+        # If recording, capture the rendered frame before buffer swap
+        if self._recording:
+            self._capture_frame(viewport)
 
         glfw.swap_buffers(self.window)
         glfw.poll_events()
@@ -183,3 +201,48 @@ class LightweightViewer:
 
     def close(self) -> None:
         glfw.terminate()
+
+    # -------------------- Recording Helpers --------------------
+    def _start_recording(self) -> None:
+        self._recording = True
+        self._frames = []
+
+    def _stop_recording(self) -> None:
+        self._recording = False
+        if not self._frames:
+            return
+
+        base_dir = os.environ.get("MAIN_DIRECTORY", os.getcwd())
+        out_dir = os.path.join(base_dir, "example_gifs")
+        os.makedirs(out_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = os.path.join(out_dir, f"recording_{timestamp}.gif")
+
+        # Save frames as GIF with fixed duration per frame
+        duration_ms = int(1000 / max(1, self._record_fps))
+        first, rest = self._frames[0], self._frames[1:]
+        first.save(
+            out_path,
+            save_all=True,
+            append_images=rest,
+            duration=duration_ms,
+            loop=0,
+            optimize=False,
+            disposal=2,
+        )
+        # Clear frames to free memory
+        self._frames = []
+
+    def _capture_frame(self, viewport: mujoco.MjrRect) -> None:
+        fb_w, fb_h = viewport.width, viewport.height
+        if fb_w <= 0 or fb_h <= 0:
+            return
+        # Allocate arrays for rgb and depth as required by mjr_readPixels
+        rgb = np.empty((fb_h, fb_w, 3), dtype=np.uint8)
+        depth = np.empty((fb_h, fb_w), dtype=np.float32)
+        mujoco.mjr_readPixels(rgb, depth, viewport, self.ctx)
+        # Flip vertically to match conventional image coordinates
+        rgb = np.flipud(rgb)
+        frame = Image.fromarray(rgb, mode="RGB")
+        self._frames.append(frame)

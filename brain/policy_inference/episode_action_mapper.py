@@ -34,9 +34,9 @@ class EpisodeActionMapper:
         mission_episode_paths = os.path.join(self.main_dir, "finetuning/mission_episodes")
         self.types_to_missions_to_submissions = self.load_submission_paths(robot_types, mission_episode_paths)
         self.build_actions_from_obs = True
-        self.slicing = 1
+        self.slicing = 2
         self.loop = False
-        self.speed = 6.0
+        self.speed = 1.0
         self.episode_actions = {}
         self.episode_lengths = {}
 

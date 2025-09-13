@@ -13,7 +13,7 @@ import numpy as np
 from pathlib import Path
 
 from mujoco_folder.packet_example import Packet, RobotListPacket
-from .policy_inference.policy_control import PolicyInference
+from .policy_inference.policy_control_inference import PolicyInference
 
 from logger_config import get_logger
 from dotenv import load_dotenv
