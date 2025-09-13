@@ -1,8 +1,8 @@
-from .physics_state_extractor import PhysicsStateExtractor
-from .action_manager import ActionManager
-from .camera_renderer import CameraRenderer
+from mujoco_folder.robot_control.physics_state_extractor import PhysicsStateExtractor
+from mujoco_folder.robot_control.action_manager import ActionManager
+from mujoco_folder.robot_control.camera_renderer import CameraRenderer
 from time import time
-from .embodiment_manager import EmbodimentManager
+from mujoco_folder.robot_control.embodiment_manager import EmbodimentManager
 import mujoco
 import numpy as np
 import threading

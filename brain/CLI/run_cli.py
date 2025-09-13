@@ -1,4 +1,5 @@
 import typer
+import sys
 from brain.CLI.LLM import LLMClient
 import re
 from logger_config import get_logger
@@ -90,8 +91,8 @@ class LLMResponseHandler:
 class DrinkOrderSession:
     """Main session handler for drink ordering"""
     
-    def __init__(self):
-        self.llm_handler = LLMResponseHandler(LLMClient())
+    def __init__(self, llm_client: Optional[LLMClient] = None):
+        self.llm_handler = LLMResponseHandler(llm_client or LLMClient())
         self.logger = get_logger('CLI')
         self.max_jobs = int(os.getenv('MISSION_QUEUE_SIZE', 3))
 
@@ -140,15 +141,81 @@ class DrinkOrderSession:
             user_input = typer.prompt('What would you like to say?')
             self.handle_user_input(user_input, queue_client)
 
+
+class SimpleMenuSession:
+    """Fallback CLI when no LLM is configured.
+
+    Displays a numbered list of supported missions and accepts numeric input
+    from the user, looping until a valid choice is made. Adds the chosen
+    mission to the queue, respecting the queue capacity.
+    """
+
+    def __init__(self):
+        self.logger = get_logger('CLI')
+        self.max_jobs = int(os.getenv('MISSION_QUEUE_SIZE', 3))
+        # Preserve mission order as defined in SUPPORTED_MISSIONS
+        self._missions = list(SUPPORTED_MISSIONS.keys())
+
+    def _print_menu(self) -> None:
+        typer.echo("Pick a mission by number:")
+        for i, m in enumerate(self._missions, start=1):
+            typer.echo(f"  {i}. {m}")
+        typer.echo("  q. Quit")
+
+    def _read_choice(self) -> Optional[int]:
+        while True:
+            raw = typer.prompt("Your choice (number or 'q')").strip()
+            if raw.lower() in ("q", "quit", "exit"):
+                return None
+            if raw.isdigit():
+                idx = int(raw)
+                if 1 <= idx <= len(self._missions):
+                    return idx - 1
+            typer.echo("Invalid choice. Please enter a valid number.")
+
+    def run_session(self, queue_client: QueueClient) -> None:
+        while True:
+            status = queue_client.get_status()
+            self.logger.info(f"Queue status: {status}")
+            if status['mission_queue_length'] >= self.max_jobs:
+                typer.echo("Queue is full. Please wait for capacity to free up.")
+                # Small blocking prompt to let user re-check
+                typer.confirm("Press Enter when ready to choose again", default=True)
+                continue
+
+            self._print_menu()
+            choice = self._read_choice()
+            if choice is None:
+                typer.echo("Goodbye.")
+                break
+            mission = self._missions[choice]
+            queue_client.enqueue_mission(mission)
+            typer.echo(f"Enqueued mission: {mission}")
+
 @app.command()
 def order_drink():
     """Chat with the robot bartender and order a drink."""
     typer.echo('Welcome to RoboBartender!')
     
-    session = DrinkOrderSession()
-    
+    # Detect if an LLM is configured and healthy; else, fall back to simple menu.
+    if 'GLM_API_KEY' not in os.environ and 'OPENAI_API_KEY' not in os.environ:
+        typer.echo("No LLM API key configured. Falling back to simple menu.")
+        has_llm = False
+    else:
+        llm_client = LLMClient()
+        has_llm = llm_client.is_configured_and_healthy()
+
     with QueueClient() as queue:
-        session.run_session(queue)
+        if has_llm:
+            session = DrinkOrderSession(llm_client)
+            session.run_session(queue)
+        else:
+            typer.echo("No LLM configured. Starting simple menu interface.")
+            session = SimpleMenuSession()
+            session.run_session(queue)
+
+
 
 if __name__ == "__main__":
-    app()
+    order_drink()
+

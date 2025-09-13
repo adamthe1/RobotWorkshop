@@ -28,7 +28,7 @@ A multi-robot simulation and control system built with MuJoCo, supporting teleop
 - **Distributed architecture** with separate brain, logging, and queue servers
 
 ## Current Supported Drinks
-- **Franka Panda**: 
+- **Franka Panda**: "pour beer", "pour mojito"
 ## Configuration
 
 Create a `.env` file in the project root with the following variables:
@@ -37,6 +37,11 @@ Create a `.env` file in the project root with the following variables:
 ```bash
 # Main project directory (absolute path)
 MAIN_DIRECTORY = "/home/user/Documents/coding/autonomous"
+
+# Recommended to run full bar. Will display default menu if not configured
+OPENAI_API_KEY = api_key
+GLM_API_KEY = api_key
+
 ```
 **See .exampleenv for other setting**
 

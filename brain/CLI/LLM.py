@@ -52,6 +52,45 @@ class LLMClient:
         response = requests.post(self.api_url, json=self.data, headers=self.headers)
         return response.json()
 
+    # -------- Health / configuration checks --------
+    def is_configured_and_healthy(self, timeout: float = 3.0) -> bool:
+        """Quickly validate LLM configuration by sending a tiny ping.
+
+        Returns False if API key/url is missing, the request errors or
+        the response structure is clearly invalid.
+        """
+        # Basic presence checks
+        if not self.api_url:
+            return False
+        if not self.api_key:
+            return False
+
+        # Build a minimal payload without mutating the main conversation
+        payload = {
+            'model': self.model,
+            'messages': [
+                {'role': 'system', 'content': 'You are a health check.'},
+                {'role': 'user', 'content': 'ping'}
+            ]
+        }
+        try:
+            resp = requests.post(self.api_url, json=payload, headers=self.headers, timeout=timeout)
+            if resp.status_code >= 400:
+                return False
+            data = resp.json()
+            # Try to detect a plausible content field
+            content = None
+            try:
+                content = data['choices'][0]['message']['content']
+            except Exception:
+                try:
+                    content = data.get('content', [{'text': ''}])[0]['text']
+                except Exception:
+                    content = None
+            return isinstance(content, str)
+        except Exception:
+            return False
+
 if __name__ == '__main__':
     import argparse
     import json

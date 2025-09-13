@@ -350,7 +350,11 @@ class QueueServer:
         return len(missions)
 
     def _filler_loop(self):
-        """Continuously try to populate next_pair from queues using heuristic."""
+        """Continuously try to populate next_pair from queues using heuristic.
+
+        Scans the mission queue to find the first mission that has at least one
+        eligible robot available. This avoids head-of-line blocking.
+        """
         while self.running:
             with self.pair_lock:
                 if self.next_pair is not None:
@@ -363,28 +367,48 @@ class QueueServer:
                             self.logger.debug("no missions in queue yet")
                             time.sleep(0.03)
                             continue
-                        # Look at head mission without popping yet
-                        mission = self.mission_queue[0]
-                        eligible_types = self._eligible_types_for_mission(mission)
-                        # Filter only types with available robots
-                        candidates = []
-                        for rtype in eligible_types:
-                            if self.type_to_queue[rtype]:
-                                # Heuristic score
-                                can_do_less = 1.0 / max(1, self._num_supported_missions_for_type(rtype))
-                                given = - float(self.type_missions_given[rtype])
-                                score = self.w1 * can_do_less + self.w2 * given
-                                candidates.append((score, rtype))
-                        if not candidates:
-                            self.logger.debug("No eligible robots available for head mission")
+
+                        # Scan the queue for the first mission with any eligible robot
+                        selected = None  # tuple(index, best_type, robot_id, mission)
+                        for idx, mission in enumerate(self.mission_queue):
+                            eligible_types = self._eligible_types_for_mission(mission)
+                            # Filter only types with available robots
+                            candidates = []
+                            for rtype in eligible_types:
+                                if self.type_to_queue[rtype]:
+                                    # Heuristic score: prefer more specialized types and those used less
+                                    can_do_less = 1.0 / max(1, self._num_supported_missions_for_type(rtype))
+                                    given = - float(self.type_missions_given[rtype])
+                                    score = self.w1 * can_do_less + self.w2 * given
+                                    candidates.append((score, rtype))
+
+                            if not candidates:
+                                continue
+
+                            # Pick best type by score for this mission
+                            candidates.sort(key=lambda x: x[0], reverse=True)
+                            _, best_type = candidates[0]
+                            robot_id = self.type_to_queue[best_type].popleft()
+                            selected = (idx, best_type, robot_id, mission)
+                            break
+
+                        if selected is None:
+                            # No available robots for any mission in the queue yet
+                            self.logger.debug("No eligible robots available for any mission; retrying")
                             time.sleep(0.03)
                             continue
-                        # Pick best type by score
-                        candidates.sort(key=lambda x: x[0], reverse=True)
-                        _, best_type = candidates[0]
-                        robot_id = self.type_to_queue[best_type].popleft()
-                        # Now finalize: pop mission, set next_pair, update stats
+
+                        # Finalize: remove mission at its index using deque rotation, update stats
+                        idx, best_type, robot_id, mission = selected
+                        if idx != 0:
+                            # Rotate so that the target mission comes to the left
+                            self.mission_queue.rotate(-idx)
+                        # Remove the mission
                         self.mission_queue.popleft()
+                        if idx != 0:
+                            # Rotate back to original order
+                            self.mission_queue.rotate(idx)
+
                         self.type_missions_given[best_type] += 1
                         self.next_pair = (robot_id, mission)
             time.sleep(0.01)

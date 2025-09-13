@@ -4,10 +4,10 @@
 # with a client via TCP sockets. Non-server functionality is stubbed.
 
 
-from .robot_body_control import RobotBodyControl
-from .physics_state_extractor import PhysicsStateExtractor
-from .camera_renderer import CameraRenderer  
-from .action_manager import ActionManager
+from mujoco_folder.robot_control.robot_body_control import RobotBodyControl
+from mujoco_folder.robot_control.physics_state_extractor import PhysicsStateExtractor
+from mujoco_folder.robot_control.camera_renderer import CameraRenderer  
+from mujoco_folder.robot_control.action_manager import ActionManager
 import os
 import sys
 import socket
@@ -20,7 +20,7 @@ from pathlib import Path
 from .packet_example import Packet, RobotListPacket
 
 import mujoco
-from .compose_scene import save_xml_file
+from mujoco_folder.scene_control.compose_scene import save_xml_file
 from logger_config import get_logger
 import atexit
 import signal
@@ -202,7 +202,7 @@ class MuJoCoServer:
         from the same thread here to avoid a black screen.
         """
         try:
-            from .lightweight_viewer import LightweightViewer
+            from mujoco_folder.scene_control.lightweight_viewer import LightweightViewer
 
             if self.viewer is not None:
                 try:

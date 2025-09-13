@@ -1,5 +1,5 @@
 from logger_config import get_logger
-from mujoco_folder.embodiment_manager import EmbodimentManager as MujocoEmbodimentManager
+from mujoco_folder.robot_control.embodiment_manager import EmbodimentManager as MujocoEmbodimentManager
 
 logger = get_logger("PolicyEmbodimentManager")
 

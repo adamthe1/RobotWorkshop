@@ -17,3 +17,4 @@ example_gifs/recording*
 franka_emika_panda/
 brain/octo_inference.py 
 franka_emika_panda
+mujoco_folder/make_gif.py
