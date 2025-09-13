@@ -129,11 +129,20 @@ class ServerManager:
         project_root = Path(__file__).resolve().parent.parent
         
         try:
-            process = subprocess.Popen([
+            # Build CLI command: run main CLI (no subcommand)
+            cmd = [
                 sys.executable,
-                "-m", "brain.CLI.run_cli"
-            ], cwd=str(project_root),
-            env={**os.environ, "PYTHONPATH": str(project_root)})
+                "-m", "brain.CLI.run_cli",
+            ]
+            # Optionally enable voice mode via env
+            if os.getenv('CLI_VOICE', '0').lower() in ('1', 'true', 'yes'):
+                cmd.append("--voice")
+
+            process = subprocess.Popen(
+                cmd,
+                cwd=str(project_root),
+                env={**os.environ, "PYTHONPATH": str(project_root)}
+            )
             
             self.processes['cli'] = process
             self.logger.info(f"CLI started with PID: {process.pid}")

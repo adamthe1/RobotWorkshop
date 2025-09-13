@@ -11,7 +11,7 @@ from typing import List, Tuple, Optional
 
 load_dotenv()
 
-app = typer.Typer()
+app = typer.Typer(invoke_without_command=True)
 
 class DrinkOrderProcessor:
     """Handles drink order parsing, validation, and processing"""
@@ -131,24 +131,59 @@ class DrinkOrderSession:
             
             break
 
-    def run_session(self, queue_client: QueueClient) -> None:
+    def run_session(self, queue_client: QueueClient, voice: bool = False) -> None:
         """Run the main drink ordering session"""
         while True:
             queue_status = queue_client.get_status()
             self.logger.info(f"Queue status: {queue_status}")
             
-            user_input = typer.prompt('What would you like to say?')
+            if voice:
+                # Lazy import to avoid requiring audio deps unless needed
+                try:
+                    from brain.CLI.speach_to_txt import listen_and_transcribe
+                except Exception as e:
+                    self.logger.error(f"Voice mode unavailable: {e}")
+                    user_input = typer.prompt('What would you like to say?')
+                else:
+                    typer.echo('Listening…')
+                    try:
+                        seconds = int(os.getenv('VOICE_SECONDS', '4'))
+                        user_input = listen_and_transcribe(seconds=seconds)
+                        if not user_input or not user_input.strip():
+                            typer.echo("Didn't catch that. Please try again.")
+                            continue
+                        typer.echo(f"You said: {user_input}")
+                    except Exception as e:
+                        self.logger.error(f"STT failed: {e}")
+                        user_input = typer.prompt('What would you like to say?')
+            else:
+                user_input = typer.prompt('What would you like to say?')
+
             self.handle_user_input(user_input, queue_client)
 
+@app.callback(invoke_without_command=True)
+def main(
+    ctx: typer.Context,
+    voice: bool = typer.Option(False, help="Use microphone speech-to-text"),
+):
+    """Chat with the robot bartender and order a drink."""
+    if ctx.invoked_subcommand is None:
+        typer.echo('Welcome to RoboBartender!')
+        session = DrinkOrderSession()
+        with QueueClient() as queue:
+            session.run_session(queue, voice=voice)
+
 @app.command()
-def order_drink():
+def order_drink(
+    voice: bool = typer.Option(False, help="Use microphone speech-to-text")
+):
     """Chat with the robot bartender and order a drink."""
     typer.echo('Welcome to RoboBartender!')
     
     session = DrinkOrderSession()
     
     with QueueClient() as queue:
-        session.run_session(queue)
+        session.run_session(queue, voice=voice)
 
 if __name__ == "__main__":
     app()
