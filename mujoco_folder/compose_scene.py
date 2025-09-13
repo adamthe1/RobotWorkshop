@@ -169,8 +169,8 @@ def get_scene1(i, j, pos_with_offset):
     coaster_h =  0.01                 # thin coaster halfheight
     # Beer glass: add 1mm clearance so it settles without a jump
     beer_glass_pos = (0.13, -0.5, initial_z+table_top_z+0.1)
-    green_bottle_pos = (0.02, 0.5, initial_z+table_top_z+0.1)
-    yellow_bottle_pos = (0.2, 0.47, initial_z+table_top_z+0.1)
+    green_bottle_pos = (0.05, 0.5, initial_z+table_top_z+0.1)
+    yellow_bottle_pos = (0.2, 0.5, initial_z+table_top_z+0.1)
 
     return f'''
 

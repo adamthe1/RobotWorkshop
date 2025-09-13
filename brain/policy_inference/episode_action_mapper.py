@@ -30,7 +30,7 @@ class EpisodeActionMapper:
         # Controls
         self.loop: bool = False  # keep simple and deterministic
         # Time-warp without interpolation: >1.0 faster (skip), <1.0 slower (repeat)
-        self.replay_speed = 10.0
+        self.replay_speed = 02.0
         # Optional alternate source: derive actions from observation.state for parity
         self.use_obs_as_action: bool = True
 
