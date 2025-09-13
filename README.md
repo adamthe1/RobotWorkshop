@@ -142,7 +142,7 @@ This allows you to:
 
 Embed in README (already added below):
 
-![Pour Beer Demo](example_gifs/pour_beer_example.gif)
+<img src="example_gifs/pour_beer_example.gif" width="50%" height="50%"/>
 
 ### Replaying Policies
 Preferred: place mission datasets under `finetuning/mission_episodes/<robot_type>/<mission>/<sub_mission>.parquet`.
