@@ -20,9 +20,13 @@ SUPPORTED_MISSIONS = {
         "test1",
         "test2",
         "reset_before_new_mission"
+    ],
+    "wave_hello": [
+        "wave",
+        "reset_before_new_mission"
     ]
 }
 
 SUPPORTED_MISSIONS_PER_ROBOT = {
     "FrankaPanda": ["placeCupOnBar", "testC", "pour beer", "pour mojito"],
-    "SO101": ["placeCupOnBar"]}
+    "SO101": ["wave_hello"]}

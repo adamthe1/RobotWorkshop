@@ -78,7 +78,7 @@
       <site group="3" name="base_frame" pos="0 0 0" quat="1 0 0 0"/>
       
       <!-- Camera for base -->
-      <camera name="base_cam" pos="0.1 0 0.2" quat="0.683013 0.183013 -0.183013 -0.683013" fovy="75"/>
+      <camera name="main_cam" pos="0.1 0 0.2" quat="0.683013 0.183013 -0.183013 -0.683013" fovy="75"/>
 
       <!-- Shoulder link -->
       <body name="shoulder" pos="0.0388353 -8.97657e-09 0.0624" quat="3.56167e-16 1.22818e-15 -1 -4.14635e-16">

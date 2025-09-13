@@ -15,6 +15,22 @@ import os
 from recording import create_lerobot_recorder, add_lerobot_controls
 
 
+panda_config = {
+    "id": "panda_0_",
+    'joints': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'],
+    'actuators': ['actuator1', 'actuator2', 'actuator3', 'actuator4', 'actuator5', 'actuator6', 'actuator7'],
+    'gripper': 'gripper'
+}
+so101_config = {
+    "id": "so101_0_",
+    'joints': ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll'],
+    'actuators': ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll'],
+    'gripper': 'gripper'
+}
+
+config_to_use = so101_config  # Change this to switch robot configurations
+
+
 load_dotenv()
 # ---------------------------- Configuration ----------------------------
 @dataclass
@@ -22,10 +38,10 @@ class TeleopConfig:
     xml_path: str = \
         os.getenv("CONTROL_ROBOT_PATH", "/root/RobotWorkshop/franka_emika_panda/scene_bar_new_ziv.xml")
     ee_site_candidates: List[str] = field(default_factory=lambda: ["ee_site"])
-    arm_joint_names: List[str] = field(default_factory=lambda: ["joint1","joint2","joint3","joint4","joint5","joint6","joint7"])
-    arm_act_names: List[str] = field(default_factory=lambda: ["actuator1","actuator2","actuator3","actuator4","actuator5","actuator6","actuator7"])
-    gripper_act_name: str = "actuator8"
-    add_prefix: str = "panda0_"
+    arm_joint_names: List[str] = field(default_factory=lambda: config_to_use['joints'])
+    arm_act_names: List[str] = field(default_factory=lambda: config_to_use['actuators'])
+    gripper_act_name: str = config_to_use['gripper']
+    add_prefix: str = config_to_use['id']
     use_prefix: bool = True
     up_axis: int = 2
     xy_step: float = 0.01
@@ -195,17 +211,8 @@ class RobotModel:
 
         self.ee_site_id, self.ee_site_name = self._pick_ee_site_id()
         self.arm_dof = self._dof_indices_for_joints(cfg.arm_joint_names)
-        if len(self.arm_dof) != 7:
-            raise RuntimeError(f"Expected 7 arm DoFs, got {len(self.arm_dof)}")
         self.arm_act_ids = [self._actuator_index(nm) for nm in cfg.arm_act_names]
         self.full_arm_act_ids = self.arm_act_ids.copy()
-        if cfg.use_prefix:
-            joint7 = f"{cfg.add_prefix}joint7"
-        else:
-            joint7 = "joint7"
-        j7_abs = self._dof_indices_for_joints((joint7,))[0]
-        self.pos7 = int(np.where(self.arm_dof == j7_abs)[0][0])
-
         try:
             self.grip_act = self._actuator_index(cfg.gripper_act_name)
             self.has_gripper = True
@@ -713,8 +720,9 @@ class TeleopApp:
         # If jogging, add a joint-space offset on top of IK
         if jog_active:
             step = self.cfg.joint_step * (self.cfg.joint_step_coarse_factor if self.inp_ctrl.inp.shift else 1.0)
-            delta = np.zeros(7)
-            for i in range(7):
+            actuator_amount = len(self.robot.arm_act_ids)
+            delta = np.zeros(actuator_amount)
+            for i in range(actuator_amount):
                 if self.inp_ctrl.inp.jog_plus[i]:
                     delta[i] += step
                 if self.inp_ctrl.inp.jog_minus[i]:
