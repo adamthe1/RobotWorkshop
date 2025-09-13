@@ -12,3 +12,5 @@ AGENTS.md
 CLAUDE.md
 finetuning/datasets/
 finetuning/example_pouring/videos/*
+example_gifs/imagesforgif/
+example_gifs/recording*

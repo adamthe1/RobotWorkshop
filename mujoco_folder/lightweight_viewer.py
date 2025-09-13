@@ -8,6 +8,7 @@ from typing import List, Optional
 
 import numpy as np
 from PIL import Image
+import time
 
 
 class LightweightViewer:
@@ -40,8 +41,13 @@ class LightweightViewer:
         self._right_down = False
         # Recording state
         self._recording: bool = False
-        self._frames: List[Image.Image] = []
-        self._record_fps: int = 30
+        self._last_capture_time: Optional[float] = None
+        self._frame_index: int = 0
+        # Recording controls
+        self._record_stride: int = 2  # capture every 1/X frames; X is stride
+        self._record_scale: float = 0.4  # downscale factor (e.g., 0.5)
+        # Output directory for frames (set on start)
+        self._frames_dir: Optional[str] = None
 
     def launch(self) -> "LightweightViewer":
         if not glfw.init():
@@ -116,7 +122,13 @@ class LightweightViewer:
 
         # If recording, capture the rendered frame before buffer swap
         if self._recording:
-            self._capture_frame(viewport)
+            self._frame_index += 1
+            if self._record_stride <= 1 or (self._frame_index % self._record_stride == 0):
+                now = time.time()
+                if self._last_capture_time is None:
+                    self._last_capture_time = now
+                # Save frame to disk with timestamp
+                self._capture_and_save_frame(viewport, now)
 
         glfw.swap_buffers(self.window)
         glfw.poll_events()
@@ -205,36 +217,27 @@ class LightweightViewer:
     # -------------------- Recording Helpers --------------------
     def _start_recording(self) -> None:
         self._recording = True
-        self._frames = []
+        self._frame_index = 0
+        self._last_capture_time = None
+
+        base_dir = os.environ.get("MAIN_DIRECTORY", os.getcwd())
+        gifs_dir = os.path.join(base_dir, "example_gifs")
+        images_dir = os.path.join(gifs_dir, "imagesforgif")
+        os.makedirs(images_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        # Create a session subfolder to avoid mixing recordings
+        self._frames_dir = os.path.join(images_dir, f"session_{timestamp}")
+        os.makedirs(self._frames_dir, exist_ok=True)
 
     def _stop_recording(self) -> None:
         self._recording = False
-        if not self._frames:
+        self._last_capture_time = None
+        self._frames_dir = None
+
+    def _capture_and_save_frame(self, viewport: mujoco.MjrRect, timestamp_sec: float) -> None:
+        if self._frames_dir is None:
             return
-
-        base_dir = os.environ.get("MAIN_DIRECTORY", os.getcwd())
-        out_dir = os.path.join(base_dir, "example_gifs")
-        os.makedirs(out_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        out_path = os.path.join(out_dir, f"recording_{timestamp}.gif")
-
-        # Save frames as GIF with fixed duration per frame
-        duration_ms = int(1000 / max(1, self._record_fps))
-        first, rest = self._frames[0], self._frames[1:]
-        first.save(
-            out_path,
-            save_all=True,
-            append_images=rest,
-            duration=duration_ms,
-            loop=0,
-            optimize=False,
-            disposal=2,
-        )
-        # Clear frames to free memory
-        self._frames = []
-
-    def _capture_frame(self, viewport: mujoco.MjrRect) -> None:
         fb_w, fb_h = viewport.width, viewport.height
         if fb_w <= 0 or fb_h <= 0:
             return
@@ -244,5 +247,24 @@ class LightweightViewer:
         mujoco.mjr_readPixels(rgb, depth, viewport, self.ctx)
         # Flip vertically to match conventional image coordinates
         rgb = np.flipud(rgb)
-        frame = Image.fromarray(rgb, mode="RGB")
-        self._frames.append(frame)
+        # Optional downscale using PIL if requested
+        if self._record_scale and self._record_scale > 0 and self._record_scale != 1.0:
+            img = Image.fromarray(rgb, mode="RGB")
+            new_w = max(1, int(img.width * self._record_scale))
+            new_h = max(1, int(img.height * self._record_scale))
+            img = img.resize((new_w, new_h), Image.BILINEAR)
+            rgb = np.asarray(img)
+        # Save to disk as PNG with index and timestamp in filename
+        ms = int(timestamp_sec * 1000)
+        filename = f"frame_{self._frame_index:06d}_{ms}.png"
+        out_path = os.path.join(self._frames_dir, filename)
+        Image.fromarray(rgb, mode="RGB").save(out_path, format="PNG", optimize=True)
+
+    # -------------------- Public setters --------------------
+    def set_record_stride(self, stride: int) -> None:
+        """Set capture stride (record 1 frame every `stride` frames)."""
+        self._record_stride = max(1, int(stride))
+
+    def set_record_scale(self, scale: float) -> None:
+        """Set downscale factor for recording, e.g., 0.5 to halve resolution."""
+        self._record_scale = float(scale) if scale > 0 else 1.0

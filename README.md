@@ -124,6 +124,26 @@ This allows you to:
 - Record state-action pairs
 - Save data in LeRobot-compatible format
 
+### Pour Beer Example
+- Scene assets include beer glasses and a bottle in the Panda scenes. A ready-made mission named `pour beer` exists in `control_panel/missions.py`.
+- Quick path:
+  - Ensure `CONTROL_ROBOT_PATH` points to `xml_robots/panda_scene.xml` (or `tests/panda_scene.xml`).
+  - Run teleop: `python3 finetuning/control_robot_solid.py`.
+  - From your mission UI/selector, choose the mission `pour beer` (sub-mission `pour_beer_bottle`).
+  - Use the lightweight viewer (`R` to record) to capture frames under `example_gifs/imagesforgif/…`.
+- Stitch into a GIF: `python3 mujoco_folder/make_gif.py --speed 2` (increase `--speed` to make the GIF play faster).
+
+### Show GIF on GitHub
+- Add a small demo GIF to the repo so GitHub renders it in the README.
+- Recommended path: `docs/media/pour_beer.gif` (kept small: scale=0.4, `--speed 2`).
+- Generate and copy latest GIF:
+  - `python3 mujoco_folder/make_gif.py --speed 2`
+  - Copy the output to `docs/media/pour_beer.gif` and commit it.
+
+Embed in README (already added below):
+
+![Pour Beer Demo](example_gifs/pour_beer_example.gif)
+
 ### Replaying Policies
 Preferred: place mission datasets under `finetuning/mission_episodes/<robot_type>/<mission>/<sub_mission>.parquet`.
 Legacy: you can set `REPLAY_EPISODE_PATH` to a single episode parquet to test policy replay.
