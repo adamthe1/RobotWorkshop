@@ -2,12 +2,15 @@
 
 A multi-robot simulation and control system built with MuJoCo, supporting teleoperation, recording, and policy replay.
 
-<img src="example_gifs/pour_beer_example.gif" width="80%" height="80%"/>
+<img src="example_gifs/pour_beer.gif" width="80%" height="80%"/>
 
 ## Quick Start
 
-1. **Activate virtual environment** and install requirements
+1. **Activate virtual environment** and install requirements  
+   `source venv/bin/activate
+   pip install -r requirements.txt`
 2. **Set up environment variables** (copy .exampleenv -> .env and add api-key, maindir)
+    `cp .exampleenv .env`
 3. **Run simulation**: `python3 -m main_run`
 4. **Talk to Bartender**: Ask for a drink
 
