@@ -75,13 +75,9 @@
             contype="0" conaffinity="0"/>
     </body>
             <!-- ==================== ROBOT 1 SCENE ==================== -->
-    <body name="table_so101_1" pos="0.05 0.0 0">
-      <geom type="box" size="0.3 0.2 0.75" material="bar_mat" contype="1" conaffinity="1" density="2000"/>
-    </body>
-
     <!-- Robot 1 -->
-    <body name="robot1" pos="0.05 0.0 0.75">
-      <attach model="so101" body="base" prefix="so101_0_"/>
+    <body name="robot1" pos="0.05 0.0 0">
+      <attach model="panda" body="link0" prefix="panda0_"/>
     </body>
 
     <!-- Bar wall for robot 1 -->

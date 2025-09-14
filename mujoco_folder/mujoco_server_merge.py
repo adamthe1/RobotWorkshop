@@ -21,6 +21,9 @@ from .packet_example import Packet, RobotListPacket
 
 import mujoco
 from mujoco_folder.scene_control.compose_scene import save_xml_file
+from mujoco_folder.scene_control.reset_cup import (
+    reset_cup_and_bottles_to_default,
+)
 from logger_config import get_logger
 import atexit
 import signal
@@ -280,6 +283,14 @@ class MuJoCoServer:
                     self.logger.debug(f"Sending robot list: {reply.robot_list}")
                 elif pkt is None:
                     break
+                elif getattr(pkt, 'mission', None) == 'reset_the_scene_cup_bottles':
+                    try:
+                        # Packet carries robot_id as a string; extract index via split('_')[-1]
+                        reset_cup_and_bottles_to_default(self.model, self.data, pkt.robot_id)
+                        reply = pkt
+                    except Exception as e:
+                        self.logger.error(f"reset_cup failed for robot_id={pkt.robot_id}: {e}")
+                        reply = pkt
                 elif pkt.action is not None:
                     self.robot_control.apply_commands(pkt)
                     reply = pkt
@@ -444,6 +455,22 @@ class MujocoClient:
     
     def __exit__(self, *args):
         self.close()
+
+    # Convenience RPCs
+    @staticmethod
+    def reset_cup(robot_id: str):
+        """Request the server to reset the beer glass for the given robot_id.
+
+        robot_id example: 'panda_0' or 'so101_0'. The server will parse the trailing
+        number and map to beer_glass_free{index+1}.
+        """
+        client = MujocoClient()
+        client.connect()
+        pkt = Packet(robot_id=robot_id, mission='reset_the_scene_cup_bottles')
+        try:
+            _ = client.send_and_recv(pkt)
+        finally:
+            client.close()
 
 
 if __name__ == '__main__':

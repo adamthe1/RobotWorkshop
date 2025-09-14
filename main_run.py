@@ -86,8 +86,9 @@ class MainOrchestrator:
                 raise Exception("Robot ID mismatch")
             packet.mission = result['mission']
             mission = result['mission']
+            
             time.sleep(0.3)
-
+        mujoco_client.reset_cup(robot_id)
         self.logger.info(f"Robot {robot_id} assigned mission: {packet}")
         print(f"\nHey, {robot_id} is preparing your drink, please come to it's bar\n")
 

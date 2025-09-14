@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from logger_config import get_logger
-from control_panel.missions import SUPPORTED_MISSIONS
+from control_panel.missions import SUPPORTED_MISSIONS ,SUPPORTED_MISSIONS_PER_ROBOT
 
 load_dotenv()
 
@@ -36,7 +36,7 @@ class EpisodeActionMapper:
         self.build_actions_from_obs = True
         self.slicing = 1
         self.loop = False
-        self.speed = 1.0
+        self.speed = 3.0
         self.episode_actions = {}
         self.episode_lengths = {}
 
@@ -65,14 +65,16 @@ class EpisodeActionMapper:
             if not os.path.isdir(rt_path):
                 self.logger.warning(f"Robot type directory not found: {rt_path}")
                 continue
+            mission_list = SUPPORTED_MISSIONS_PER_ROBOT.get(rt, [])
             missions = {}
-            for mission, sub_missions in SUPPORTED_MISSIONS.items():
+            for mission in mission_list:
+                sub_mission_list = SUPPORTED_MISSIONS.get(mission, [])
                 submissions = {}
                 mission_path = os.path.join(rt_path, mission)
                 if not os.path.isdir(mission_path):
                     self.logger.warning(f"Mission directory not found for {rt}: {mission_path}")
                     continue
-                for sub_mission in sub_missions:
+                for sub_mission in sub_mission_list:
                     sub_mission_file = f"{sub_mission}.parquet"
                     sub_mission_path = os.path.join(mission_path, sub_mission_file)
                     if not os.path.isfile(sub_mission_path):
@@ -300,12 +302,14 @@ class EpisodeActionMapper:
         self,
         frames: np.ndarray,
         speed: float,
+        mode: str = "max",  # "interp" or "max"
     ) -> np.ndarray:
         """
         Resample along time to implement playback speed.
         - frames: ndarray (T, A)
-        - speed > 1.0: slower (more frames, interpolated)
+        - speed > 1.0: slower (more frames, interpolated or max)
         - speed < 1.0: faster (fewer frames, skip)
+        - mode: "interp" (default) uses interpolation, "max" uses max over each window
         """
         if speed == 1.0 or frames.shape[0] == 0:
             return frames
@@ -315,6 +319,19 @@ class EpisodeActionMapper:
         if new_T == T:
             return frames
 
+        if mode == "max":
+            # Split frames into new_T bins and take max in each bin
+            indices = np.linspace(0, T, num=new_T + 1, dtype=int)
+            out = np.empty((new_T, A), dtype=float)
+            for i in range(new_T):
+                start, end = indices[i], indices[i + 1]
+                if end > start:
+                    out[i] = np.max(frames[start:end], axis=0)
+                else:
+                    out[i] = frames[start]
+            return out
+
+        # Default: interpolation
         old_t = np.linspace(0.0, 1.0, num=T, endpoint=True)
         new_t = np.linspace(0.0, 1.0, num=new_T, endpoint=True)
         out = np.empty((new_T, A), dtype=float)

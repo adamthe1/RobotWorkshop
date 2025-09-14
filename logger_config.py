@@ -153,7 +153,7 @@ class GlobalLogger:
         logging.getLogger('CLI').setLevel(logging.INFO)
         logging.getLogger('BrainServer').setLevel(logging.INFO)
         logging.getLogger('BrainClient').setLevel(logging.INFO)
-        logging.getLogger('MissionManager').setLevel(logging.DEBUG)
+        logging.getLogger('MissionManager').setLevel(logging.INFO)
         logging.getLogger('MissionStatus').setLevel(logging.DEBUG)  # was DEBUG
         
         logging.getLogger('MujocoServer').setLevel(logging.DEBUG)

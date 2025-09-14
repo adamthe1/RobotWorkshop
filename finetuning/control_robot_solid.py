@@ -564,6 +564,7 @@ class TeleopApp:
         while not glfw.window_should_close(window):
             if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS:
                 break
+            
 
             now = time.time()
             dt = now - last_time
@@ -576,9 +577,10 @@ class TeleopApp:
 
             # Handle camera toggle BEFORE control tick clears one-shot flags.
             # Also detect C key edge in case callbacks are overridden.
-            c_pressed = glfw.get_key(window, glfw.KEY_C) == glfw.PRESS
-            cam_toggle = self.inp_ctrl.inp.toggle_camera or (c_pressed and not self._cam_toggle_down)
+            #c_pressed = glfw.get_key(window, glfw.KEY_C) == glfw.PRESS
+            cam_toggle = self.inp_ctrl.inp.toggle_camera# or (c_pressed and not self._cam_toggle_down)
             if cam_toggle:
+                time.sleep(0.4)
                 self.cam_index = (self.cam_index + 1) % len(self.cam_names)
                 name = self.cam_names[self.cam_index]
                 if name == "free":
@@ -591,11 +593,14 @@ class TeleopApp:
                         print(f"[INFO] Camera switched to fixed: {name} (id={cam_id}) (C)")
                     else:
                         print(f"[WARN] Camera name not found: {name}")
-            self._cam_toggle_down = c_pressed
+                
+                
+            #self._cam_toggle_down = c_pressed
 
             # Toggle IK tracking if requested
             if self.inp_ctrl.inp.toggle_ik:
                 self.ik_enabled = not self.ik_enabled
+                time.sleep(0.3)
                 print(f"[INFO] IK tracking {'ENABLED' if self.ik_enabled else 'DISABLED'} (X)")
             
             # Toggle grasp stickiness if requested

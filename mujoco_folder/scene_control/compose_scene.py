@@ -26,7 +26,7 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
 
     num_franka = int(os.getenv("FRANKA_PANDA_COUNT", 1))
     num_so101 = int(os.getenv("SO101_COUNT", 1))
-    robot_dict = {**{f'panda{i}': "FrankaPanda" for i in range(num_franka)},
+    robot_dict = {**{f'panda_{i}': "FrankaPanda" for i in range(num_franka)},
                   **{f'so101_{i}': "SO101" for i in range(num_so101)}}
 
     # Helper function to apply Y offset to position
@@ -314,7 +314,7 @@ def get_scene2(i, j, pos_with_offset):
 </body>
 '''
 
-def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.0):
+def save_xml_file(filename, y_offset=0.0, num_robots=1, robot_spacing=2.5):
     """
     Generate and save MuJoCo XML file.
     
