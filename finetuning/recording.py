@@ -671,7 +671,7 @@ def create_lerobot_recorder(model: mujoco.MjModel, data: mujoco.MjData,
     config = RecordingConfig()
     # Align dataset FPS and video FPS to shared CONTROL_HZ for consistent timing
     try:
-        hz = float(os.getenv("CONTROL_HZ", "60"))
+        hz = float(os.getenv("CONTROL_HZ", "30"))
     except Exception:
         hz = 60.0
     config.fps = int(round(hz))

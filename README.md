@@ -7,12 +7,13 @@ A multi-robot simulation and control system built with MuJoCo, supporting teleop
 ## Quick Start
 
 1. **Activate virtual environment** and install requirements  
-   `source venv/bin/activate
+   `source venv/bin/activate |
    pip install -r requirements.txt`
 2. **Set up environment variables** (copy .exampleenv -> .env and add api-key, maindir)
     `cp .exampleenv .env`
 3. **Run simulation**: `python3 -m main_run`
 4. **Talk to Bartender**: Ask for a drink
+5. **Quit**: Press CTRL+C in terminal to quit
 
 ## System Architecture
 
@@ -44,6 +45,13 @@ MAIN_DIRECTORY = "/home/user/Documents/coding/autonomous"
 # Recommended to run full bar. Will display default menu if not configured
 OPENAI_API_KEY = api_key
 GLM_API_KEY = api_key
+
+# Use GPU (1) or CPU (0)
+USE_GPU_WSL = 1
+
+# How many Robots of each Type you want
+FRANKA_PANDA_COUNT = 1
+SO101_COUNT = 0
 
 ```
 **See .exampleenv for other setting**

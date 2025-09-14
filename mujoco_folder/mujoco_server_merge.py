@@ -32,7 +32,7 @@ import random
 load_dotenv()
 
 class MuJoCoServer:
-    def __init__(self, xml_path=None, host=os.getenv("MUJOCO_HOST", "localhost"), port=int(os.getenv("MUJOCO_PORT", 5555)),
+    def __init__(self, host=os.getenv("MUJOCO_HOST", "localhost"), port=int(os.getenv("MUJOCO_PORT", 5555)),
                  render_rgb=True, rgb_width=256, rgb_height=256, num_robots=3):
         """
         Initialize MuJoCo server to run physics simulation and communicate
@@ -54,7 +54,7 @@ class MuJoCoServer:
 
         self.robot_ids = ['r1']
         self.robot_dict = {"r1": "FrankaPanda"}
-        self.load_scene(xml_path, num_robots=num_robots)
+        self.load_scene()
         
         # Optionally load saved state from disk
         loaded = self.load_saved_state_if_enabled()
@@ -76,9 +76,9 @@ class MuJoCoServer:
 
         # Control frequency in Hz (shared across system via CONTROL_HZ)
         try:
-            self.control_hz = float(os.getenv("CONTROL_HZ", "60"))
+            self.control_hz = float(os.getenv("CONTROL_HZ", "30"))
         except Exception:
-            self.control_hz = 60.0
+            self.control_hz = 30.0
 
         self.no_viewer = int(os.getenv("NO_VIEWER", 0)) 
         self.logger.info(f"MuJoCo server initialized on {self.host}:{self.port} with no_viewer={self.no_viewer}")
@@ -90,12 +90,11 @@ class MuJoCoServer:
         # Note: main process handles SIGINT/SIGTERM; server exits via terminal
 
 
-    def load_scene(self, xml_path, num_robots=None):  # Remove num_robots parameter since we use env vars
-        if os.getenv("USE_DUPLICATING_PATH", "0") == "1":
-            save_xml = os.getenv("MAIN_DIRECTORY") + "/xml_robots/panda_scene.xml"
-            xml_path, robot_dict = save_xml_file(save_xml)  # Now returns robot_dict
-            self.robot_dict = robot_dict  # Store robot type mapping
-            self.robot_ids = list(robot_dict.keys())  # Extract robot IDs
+    def load_scene(self):
+        save_xml = os.getenv("MAIN_DIRECTORY") + "/xml_robots/panda_scene.xml"
+        xml_path, robot_dict = save_xml_file(save_xml)  # Now returns robot_dict
+        self.robot_dict = robot_dict  # Store robot type mapping
+        self.robot_ids = list(robot_dict.keys())  # Extract robot IDs
             
         # Load MuJoCo model
         self.logger.info(f"Loading MuJoCo model from: {xml_path}")
@@ -112,54 +111,42 @@ class MuJoCoServer:
 
 
     def load_saved_state_if_enabled(self) -> bool:
-        """Load a single-robot joint-only state and apply to all robots.
-
-        When LOAD_SAVED_STATE is enabled, finds the newest .npz under
-        xml_robots/saved_state containing keys:
-          - joint_names (base names, e.g., 'joint1', 'finger_joint1', ...)
-          - qpos, qvel (same length as joint_names)
-
-        For each robot listed in self.robot_ids, prefixes each base joint name
-        (e.g., 'r1_joint1') and applies hinge/slide joint position/velocity.
-        Returns True if anything was applied, else False.
         """
-        flag = os.getenv("LOAD_SAVED_STATE", "0").strip().lower()
-        if flag not in ("1", "true", "yes", "on"):  # disabled
+        Load a joint-only state for each robot type (FrankaPanda, SO101) and apply to all robots of that type.
+        Looks for saved_panda.npz and saved_so101.npz in xml_robots/saved_state.
+        """
+        flag = os.getenv("LOAD_SAVED_STATE", "1").strip().lower()
+        if flag not in ("1", "true", "yes", "on"):
             return False
+
         try:
             base = os.getenv("MAIN_DIRECTORY") or str(Path.cwd())
-            # Allow explicit override via env
-            search_dirs = []
-            search_dirs.append(Path(base) / "xml_robots" / "saved_state")
-            search_dirs.append(Path(base) / "finetuning" / "saved_robot_states")
-
-            # Collect all candidate .npz files across directories
-            candidates = []
-            for d in search_dirs:
-                if d.exists():
-                    candidates.extend(list(d.glob("*.npz")))
-
-            if not candidates:
-                self.logger.warning(
-                    "LOAD_SAVED_STATE set but no .npz files found in: " + ", ".join(str(p) for p in search_dirs)
-                )
-                return False
-            # Use most recent by mtime
-            candidates.sort(key=lambda p: p.stat().st_mtime)
-            path = candidates[-1]
-            arr = np.load(path, allow_pickle=True)
-            if not ("joint_names" in arr and "qpos" in arr and "qvel" in arr):
-                self.logger.warning(f"Saved file {path} does not contain joint_names/qpos/qvel; skipping")
-                return False
-            names = [str(x) for x in arr["joint_names"].tolist()]
-            qpos = np.array(arr["qpos"], dtype=float).reshape(-1)
-            qvel = np.array(arr["qvel"], dtype=float).reshape(-1)
-            if not (len(names) == len(qpos) == len(qvel)):
-                self.logger.warning(f"Saved joint arrays length mismatch in {path}")
-                return False
+            state_dir = Path(base) / "xml_robots" / "saved_state"
+            type_to_file = {
+                "FrankaPanda": state_dir / "saved_panda.npz",
+                "SO101": state_dir / "saved_so101.npz",
+            }
 
             applied = 0
-            for rid in self.robot_ids:
+            for rid, rtype in self.robot_dict.items():
+                npz_path = type_to_file.get(rtype)
+                if not npz_path or not npz_path.exists():
+                    self.logger.warning(f"No saved state file for robot {rid} of type {rtype} at {npz_path}")
+                    continue
+
+                arr = np.load(npz_path, allow_pickle=True)
+                if not ("joint_names" in arr and "qpos" in arr and "qvel" in arr):
+                    self.logger.warning(f"Saved file {npz_path} missing joint_names/qpos/qvel; skipping")
+                    continue
+
+                names = [str(x) for x in arr["joint_names"].tolist()]
+                self.logger.info(f"Applying saved state to robot {rid} of type {rtype} with joints: {names}")
+                qpos = np.array(arr["qpos"], dtype=float).reshape(-1)
+                qvel = np.array(arr["qvel"], dtype=float).reshape(-1)
+                if not (len(names) == len(qpos) == len(qvel)):
+                    self.logger.warning(f"Saved joint arrays length mismatch in {npz_path}")
+                    continue
+
                 prefix = f"{rid}_"
                 for nm, qp, qv in zip(names, qpos, qvel):
                     full = prefix + nm
@@ -176,10 +163,10 @@ class MuJoCoServer:
                     applied += 1
 
             if applied == 0:
-                self.logger.warning(f"No matching joints found when applying {path} to robots {self.robot_ids}")
+                self.logger.warning("No matching joints found when applying saved states to robots")
                 return False
             mujoco.mj_forward(self.model, self.data)
-            self.logger.info(f"Applied joint-only saved state from {path} to {len(self.robot_ids)} robots; joints set: {applied}")
+            self.logger.info(f"Applied saved states to robots; joints set: {applied}")
             return True
         except Exception as e:
             self.logger.error(f"Failed to load saved state: {e}")
@@ -371,18 +358,6 @@ class MuJoCoServer:
             self.viewer.close()
 
 
-def find_model_path():
-    """
-    Find the MuJoCo model path using a default location
-    """
-    env_model_path = os.getenv("MUJOCO_MODEL_PATH")
-    if env_model_path and os.path.exists(env_model_path):
-        return env_model_path
-    default_path = "/home/adam/Documents/coding/autonomous/franka_emika_panda/mjx_scene.xml"
-    if os.path.exists(default_path):
-        return default_path
-    raise FileNotFoundError("Could not find model file at default path")
-
 class MujocoClient:
     def __init__(self):
         self.host = os.getenv("MUJOCO_HOST", "localhost")
@@ -472,5 +447,5 @@ class MujocoClient:
 
 
 if __name__ == '__main__':
-    server = MuJoCoServer(xml_path=find_model_path(), num_robots=1)
+    server = MuJoCoServer()
     server.run()

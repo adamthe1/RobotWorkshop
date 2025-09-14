@@ -120,9 +120,9 @@ class MainOrchestrator:
                 # Align loop with simulation/control rate for precise replay
                 # Default to 60 Hz if not set
                 try:
-                    hz = float(os.getenv("CONTROL_HZ", "60"))
+                    hz = float(os.getenv("CONTROL_HZ", "30"))
                 except Exception:
-                    hz = 60.0
+                    hz = 30.0
                 time.sleep(max(0.0, 1.0/ hz))
                 
             except Exception as e:

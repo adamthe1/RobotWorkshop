@@ -16,10 +16,10 @@ from recording import create_lerobot_recorder, add_lerobot_controls
 
 
 panda_config = {
-    "id": "panda_0_",
+    "id": "panda0_",
     'joints': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'],
     'actuators': ['actuator1', 'actuator2', 'actuator3', 'actuator4', 'actuator5', 'actuator6', 'actuator7'],
-    'gripper': 'gripper'
+    'gripper': 'actuator8'
 }
 so101_config = {
     "id": "so101_0_",
@@ -28,7 +28,11 @@ so101_config = {
     'gripper': 'gripper'
 }
 
-config_to_use = so101_config  # Change this to switch robot configurations
+user_input = input("Select robot configuration (1 for Panda, 2 for So101) [default 1]: ")
+if user_input == "2":
+    config_to_use = so101_config
+else:
+    config_to_use = panda_config
 
 
 load_dotenv()
@@ -645,11 +649,13 @@ class TeleopApp:
                 print(f"[INFO] Saved robot state to {path}")
                 # Additionally save only single-robot joint state for easy replication across duplicates
                 try:
-                    base_joint_names = [f"joint{i}" for i in range(1,8)] + ["finger_joint1", "finger_joint2"]
+                    base_joint_names = config_to_use['joints']
+                    print("[INFO] Saving per-robot joint-only state for joints:", base_joint_names)
                     names_out = []
                     qpos_out = []
                     qvel_out = []
                     prefix = self.cfg.add_prefix if self.cfg.use_prefix else ""
+
                     for nm in base_joint_names:
                         full = f"{prefix}{nm}"
                         jid = mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_JOINT, full)

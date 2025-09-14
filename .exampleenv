@@ -2,53 +2,52 @@
 # The Main directory of the project - needed for paths
 MAIN_DIRECTORY = "/home/adam/Documents/coding/autonomous"
 
+#Control loop rate to match recording (DEFAULT 30)
+CONTROL_HZ=30
+
 # How many missions can be in the queue at once
 MISSION_QUEUE_SIZE = 6  
 
-# MuJoCo server configuration
+# MuJoCo server Host and Port configuration
 MUJOCO_HOST = 'localhost'
 MUJOCO_PORT = 8600  # Default port for MuJoCo server
 
-# Queue server configuration
+# Queue server Host and Port configuration
 QUEUE_HOST = 'localhost'
 QUEUE_PORT = 8700
 
-# Logging server configuration
+# Logging server Host and Port configuration
 LOGGING_HOST = 'localhost'
 LOGGING_PORT = 8400
 
-# Brain server configuration
+# Brain server Host and Port configuration
 BRAIN_HOST = 'localhost'
 BRAIN_PORT = 8900
 
 # Use GPU acceleration (1 to enable, 0 to disable)
 USE_GPU_WSL = 1
 
-# if to use the Compose_scene for generating scenes (keep 1)
-USE_DUPLICATING_PATH = 1 
 #Robot configuration
 FRANKA_PANDA_COUNT = 1
-SO101_COUNT = 3
+SO101_COUNT = 0
 
-# where to find the mujoco xml model files if not use duplicating path
-MUJOCO_MODEL_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene.xml
+# Use the saved state from disk if available (1 to enable, 0 to disable)
 LOAD_SAVED_STATE = 1
 
 # Control robot path (single robot for teleop and recording)
 CONTROL_ROBOT_PATH = ${MAIN_DIRECTORY}/xml_robots/panda_scene_one_robot_franka.xml
 
-# Logging into logs folder
+# Logging into logs folder (1 is logging in file, 0 is logging in console)
 LOG_NO_CONSOLE = 1
 
-# run simulation without viewer
+# run simulation without viewer (lighter)
 NO_VIEWER = 0
 
-# Reduce network payload by omitting camera images in state packets
+# Reduce network payload by omitting camera images in state packets (use when policy doesn't need images)
 NO_CAMERA_IN_STATE = 1
 
-# LLM API Keys
-OPENAI_API_KEY = api_key
-GLM_API_KEY = api_key
+# LLM API Keys (Replace 'your_api_key_here' with your actual API key)
+# THe simulation can run without these keys, but LLM features will be disabled
+OPENAI_API_KEY = "your_api_key_here"
+GLM_API_KEY = "your_api_key_here"
 
-#Control loop rate to match recording
-CONTROL_HZ=30
