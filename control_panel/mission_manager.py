@@ -69,6 +69,7 @@ class MissionManager:
             return {'robot_id': None, 'mission': None}
         if self.queue_client.see_next_robot() == robot_id:
             # remove mission from queue
+            
             return self.queue_client.get_robot_mission_pair()
         else:
             return {'robot_id': None, 'mission': None}
@@ -78,25 +79,39 @@ class MissionManager:
         if not packet or packet.mission is None:
             raise ValueError("Invalid packet provided")
         
+        packet.mission_status = 'ongoing'
+        
         if packet.submission is None:
-            
+            # added support for completion with episode mapper
             packet = self.get_next_submission(packet)
+
             self.logger.debug(f"adding first submission to packet {packet.submission} for mission {packet.mission}")
             return packet
-        
+        self.logger.debug(f"Checking status for submission {packet.submission} status {packet.submission_status}")
         result = self.status_checker.sub_mission_status(packet)
 
+        packet.submission_status = "completed" if result['done'] else "ongoing"
+
         if result['done']:
+            self.logger.debug(f"Submission {packet.submission} completed for mission {packet.mission}")
             if self.is_last_submission(packet):
-                self.logger.info(f"Mission {packet.mission} completed for robot {packet.robot_id}")
-                packet.mission = None
-                self.put_robot_in_queue(packet.robot_id)
-                self.status_checker.submission_counter.clear()  # Reset counter after mission completion
-                return packet
+                packet.mission_status = 'completed'
+                return self.reset_packet(packet)
             else:
                 packet = self.get_next_submission(packet)
+                packet.submission_status = None
                 return packet
             
+        return packet
+    
+    def reset_packet(self, packet):
+        self.logger.info(f"Mission {packet.mission} completed for robot {packet.robot_id}")
+        packet.mission = None
+        packet.mission_status = None
+        packet.submission = None
+        packet.submission_status = None
+        self.put_robot_in_queue(packet.robot_id)
+        self.status_checker.submission_counter.clear()  # Reset counter after mission completion
         return packet
     
     def put_robot_in_queue(self, robot_id):
@@ -105,9 +120,12 @@ class MissionManager:
         self.queue_client.enqueue_robot(robot_id)
         return
 
+    def reset_robot_and_mission(self, robot_id, mission):
+        """Unlock the robot for new missions."""
+        self.logger.info(f"Unlocking robot {robot_id}")
+        self.put_robot_in_queue(robot_id)
+        self.queue_client.enqueue_mission(mission)
 
     def get_robot_from_queue(self):
         """Find a free robot that is not currently processing a mission."""
         return self.queue_client.get_robot_from_queue()
-
-

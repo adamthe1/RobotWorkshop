@@ -1,0 +1,820 @@
+#!/usr/bin/env python3
+import sys
+import time
+import math
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Tuple, Optional
+
+import numpy as np
+import mujoco
+import glfw
+from dotenv import load_dotenv
+import os
+
+from recording import create_lerobot_recorder, add_lerobot_controls
+
+
+panda_config = {
+    "id": "panda_0_",
+    'joints': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'joint6', 'joint7'],
+    'actuators': ['actuator1', 'actuator2', 'actuator3', 'actuator4', 'actuator5', 'actuator6', 'actuator7'],
+    'gripper': 'gripper'
+}
+so101_config = {
+    "id": "so101_0_",
+    'joints': ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll'],
+    'actuators': ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll'],
+    'gripper': 'gripper'
+}
+
+config_to_use = so101_config  # Change this to switch robot configurations
+
+
+load_dotenv()
+# ---------------------------- Configuration ----------------------------
+@dataclass
+class TeleopConfig:
+    xml_path: str = \
+        os.getenv("CONTROL_ROBOT_PATH", "/root/RobotWorkshop/franka_emika_panda/scene_bar_new_ziv.xml")
+    ee_site_candidates: List[str] = field(default_factory=lambda: ["ee_site"])
+    arm_joint_names: List[str] = field(default_factory=lambda: config_to_use['joints'])
+    arm_act_names: List[str] = field(default_factory=lambda: config_to_use['actuators'])
+    gripper_act_name: str = config_to_use['gripper']
+    add_prefix: str = config_to_use['id']
+    use_prefix: bool = True
+    up_axis: int = 2
+    xy_step: float = 0.01
+    z_step: float = 0.01
+    kp_pos: float = 12.0
+    damping_lambda: float = 0.10
+    ctrl_hz: float = 30.0
+    subst_steps: int = 2
+    target_radius: float = 0.01
+    target_rgba: Tuple[float, float, float, float] = (1.0, 0.1, 0.1, 1.0)
+    camera_orbit_sens: float = 100.0
+    camera_pan_sens: float = 100.0
+    camera_zoom_sens: float = 60.0
+    # Camera cycle: names to cycle; include "free" to allow free cam
+    camera_cycle: Optional[Tuple[str, ...]] = None
+    j1_limit: float = math.radians(10.0)
+    j1_limit_k: float = 4.0
+    j1_center_k: float = 200.0
+    j2_pref: float = -0.5
+    j2_pref_k: float = 0.8
+    kp_yaw: float = 4.0
+    # IK objective toggles
+    enable_yaw_control: bool = False
+    enable_posture_objectives: bool = False
+    # Joint jogging
+    # User-requested large increments
+    joint_step: float = 3.0   # rad per control tick
+    joint_step_coarse_factor: float = 20.0  # when Shift held
+    # Sticky grasp config
+    grasp_capture_dist: float = 0.15
+
+    def __post_init__(self):
+        if self.camera_cycle is None:
+            self.camera_cycle = ("free", "top", "front", "back", "left", "right")
+        if self.use_prefix:
+            self.ee_site_candidates = [f"{self.add_prefix}{name}" for name in self.ee_site_candidates]
+            self.arm_joint_names = [f"{self.add_prefix}{name}" for name in self.arm_joint_names]
+            self.arm_act_names = [f"{self.add_prefix}{name}" for name in self.arm_act_names]
+            self.gripper_act_name = f"{self.add_prefix}{self.gripper_act_name}"
+
+
+# ------------------------------ Utilities ------------------------------
+def clamp(x, lo, hi):
+    return np.minimum(np.maximum(x, lo), hi)
+
+
+def wrap_pi(a):
+    return (a + np.pi) % (2*np.pi) - np.pi
+
+
+# ------------------------------ Input I/O ------------------------------
+class InputState:
+    def __init__(self):
+        self.left=False; self.right=False; self.up=False; self.down=False
+        self.z_up=False; self.z_down=False
+        self.shift=False
+        # Mouse drag states: left = orbit, right = pan
+        self.left_drag=False; self.right_drag=False; self.middle_drag=False
+        self.last_x=0.0; self.last_y=0.0
+        self.grip_close=False; self.grip_open=False
+        self.reset=False
+        # Force-reset to XML defaults (ignores any saved state)
+        self.reset_xml=False
+        self.save_state=False
+        self.toggle_camera=False
+        # Toggle IK (Jacobian following)
+        self.toggle_ik=False
+        # Toggle grasp stickiness
+        self.toggle_stickiness=False
+        # per-joint jogging flags (+ increases angle, - decreases)
+        self.jog_plus = [False]*7
+        self.jog_minus = [False]*7
+
+    def reset_oneshot(self):
+        self.grip_close=False; self.grip_open=False; self.reset=False; self.reset_xml=False; self.save_state=False; self.toggle_camera=False; self.toggle_ik=False; self.toggle_stickiness=False
+
+
+class InputController:
+    def __init__(self, config: TeleopConfig, model, scene, cam):
+        self.cfg = config
+        self.inp = InputState()
+        self.model = model
+        self.scene = scene
+        self.cam = cam
+
+    def install(self, window):
+        def on_cursor(win, x, y):
+            dx = x - self.inp.last_x
+            dy = y - self.inp.last_y
+            # Left-drag: orbit (rotate)
+            if self.inp.left_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
+                mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ROTATE_H, dx/self.cfg.camera_orbit_sens, 0, self.scene, self.cam)
+                mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ROTATE_V, 0, -dy/self.cfg.camera_orbit_sens, self.scene, self.cam)
+            # Right-drag: pan (move)
+            elif self.inp.right_drag and self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
+                mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_MOVE_H,   dx/self.cfg.camera_pan_sens, 0, self.scene, self.cam)
+                mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_MOVE_V,   0,  -dy/self.cfg.camera_pan_sens, self.scene, self.cam)
+            self.inp.last_x, self.inp.last_y = x, y
+
+        def on_button(win, button, action, mods):
+            pressed = action == glfw.PRESS
+            if button == glfw.MOUSE_BUTTON_LEFT:     self.inp.left_drag   = pressed
+            elif button == glfw.MOUSE_BUTTON_RIGHT:  self.inp.right_drag  = pressed
+            elif button == glfw.MOUSE_BUTTON_MIDDLE: self.inp.middle_drag = pressed
+
+        def on_scroll(win, xoff, yoff):
+            if self.cam.type == mujoco.mjtCamera.mjCAMERA_FREE:
+                mujoco.mjv_moveCamera(self.model, mujoco.mjtMouse.mjMOUSE_ZOOM, 0, -yoff/self.cfg.camera_zoom_sens, self.scene, self.cam)
+
+        def on_key(win, key, scancode, action, mods):
+            pressed = action != glfw.RELEASE
+            self.inp.shift = (mods & glfw.MOD_SHIFT) != 0
+            # Remapped arrow keys for red circle controls:
+            # - Behavior previously on UP is now on LEFT
+            # - Behavior previously on DOWN is now on RIGHT
+            # - Behavior previously on RIGHT is now on UP
+            # - Behavior previously on LEFT is now on DOWN
+            if   key == glfw.KEY_RIGHT:  self.inp.down  = pressed
+            elif key == glfw.KEY_LEFT: self.inp.up    = pressed
+            elif key == glfw.KEY_UP:    self.inp.right = pressed
+            elif key == glfw.KEY_DOWN:  self.inp.left  = pressed
+            elif key == glfw.KEY_A:     self.inp.z_up   = pressed
+            elif key == glfw.KEY_D:     self.inp.z_down = pressed
+            elif key == glfw.KEY_F and action == glfw.PRESS: self.inp.grip_close = True
+            elif key == glfw.KEY_G and action == glfw.PRESS: self.inp.grip_open  = True
+            elif key == glfw.KEY_B and action == glfw.PRESS: self.inp.reset = True
+            elif key == glfw.KEY_Z and action == glfw.PRESS: self.inp.reset_xml = True
+            elif key == glfw.KEY_V and action == glfw.PRESS: self.inp.save_state = True
+            elif key == glfw.KEY_C and action == glfw.PRESS: self.inp.toggle_camera = True
+            elif key == glfw.KEY_X and action == glfw.PRESS: self.inp.toggle_ik = True
+            elif key == glfw.KEY_S and action == glfw.PRESS: self.inp.toggle_stickiness = True
+            # Joint jog bindings: i=0..6 => (1/q), (2/w), (3/e), (4/r), (5/t), (6/y), (7/u)
+            # Convention: number increases joint angle, letter decreases
+            if   key == glfw.KEY_1: self.inp.jog_plus[0]  = pressed
+            elif key == glfw.KEY_Q: self.inp.jog_minus[0] = pressed
+            elif key == glfw.KEY_2: self.inp.jog_plus[1]  = pressed
+            elif key == glfw.KEY_W: self.inp.jog_minus[1] = pressed
+            elif key == glfw.KEY_3: self.inp.jog_plus[2]  = pressed
+            elif key == glfw.KEY_E: self.inp.jog_minus[2] = pressed
+            elif key == glfw.KEY_4: self.inp.jog_plus[3]  = pressed
+            elif key == glfw.KEY_R: self.inp.jog_minus[3] = pressed
+            elif key == glfw.KEY_5: self.inp.jog_plus[4]  = pressed
+            elif key == glfw.KEY_T: self.inp.jog_minus[4] = pressed
+            elif key == glfw.KEY_6: self.inp.jog_plus[5]  = pressed
+            elif key == glfw.KEY_Y: self.inp.jog_minus[5] = pressed
+            elif key == glfw.KEY_7: self.inp.jog_plus[6]  = pressed
+            elif key == glfw.KEY_U: self.inp.jog_minus[6] = pressed
+
+        glfw.set_cursor_pos_callback(window, on_cursor)
+        glfw.set_mouse_button_callback(window, on_button)
+        glfw.set_scroll_callback(window, on_scroll)
+        glfw.set_key_callback(window, on_key)
+
+        return on_key  # allow further enhancement by recorder controls
+
+
+# ----------------------------- Robot Access ----------------------------
+class RobotModel:
+    def __init__(self, cfg: TeleopConfig):
+        xml = Path(cfg.xml_path)
+        if not xml.exists():
+            print(f"[ERROR] XML not found: {xml}")
+            sys.exit(1)
+        self.model = mujoco.MjModel.from_xml_path(str(xml))
+        self.data = mujoco.MjData(self.model)
+        self.cfg = cfg
+
+        self.ee_site_id, self.ee_site_name = self._pick_ee_site_id()
+        self.arm_dof = self._dof_indices_for_joints(cfg.arm_joint_names)
+        self.arm_act_ids = [self._actuator_index(nm) for nm in cfg.arm_act_names]
+        self.full_arm_act_ids = self.arm_act_ids.copy()
+        try:
+            self.grip_act = self._actuator_index(cfg.gripper_act_name)
+            self.has_gripper = True
+            lo, hi = self.model.actuator_ctrlrange[self.grip_act]
+            self.grip_open_val = float(hi)
+            self.grip_close_val = float(lo)
+            self.full_arm_act_ids.append(self.grip_act)
+        except RuntimeError:
+            self.has_gripper = False
+            self.grip_act = None
+            self.grip_open_val = self.grip_close_val = 0.0
+
+        mujoco.mj_forward(self.model, self.data)
+        # Build name maps for bodies and joints
+        self.body_name_to_id = {mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, i): i for i in range(self.model.nbody)}
+        self.jnt_name_to_qposadr = {}
+        for j in range(self.model.njnt):
+            nm = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_JOINT, j)
+            if nm:
+                self.jnt_name_to_qposadr[nm] = int(self.model.jnt_qposadr[j])
+
+    # name/id helpers
+    def _actuator_index(self, name: str) -> int:
+        aid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
+        if aid < 0:
+            raise RuntimeError(f"Actuator '{name}' not found.")
+        return aid
+
+    def _dof_indices_for_joints(self, joints: Tuple[str, ...]) -> np.ndarray:
+        idxs: List[int] = []
+        for jn in joints:
+            jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, jn)
+            if jid < 0:
+                raise RuntimeError(f"Joint '{jn}' not found.")
+            dofadr = self.model.jnt_dofadr[jid]
+            jtype  = self.model.jnt_type[jid]
+            if jtype in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+                dofnum=1
+            elif jtype == mujoco.mjtJoint.mjJNT_BALL:
+                dofnum=3
+            elif jtype == mujoco.mjtJoint.mjJNT_FREE:
+                dofnum=6
+            else:
+                raise RuntimeError(f"Unsupported joint type for '{jn}' (type={jtype}).")
+            idxs.extend(range(dofadr, dofadr + dofnum))
+        return np.array(idxs, dtype=int)
+
+    def _pick_ee_site_id(self) -> Tuple[int, str]:
+        for nm in self.cfg.ee_site_candidates:
+            sid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, nm)
+            if sid >= 0:
+                return sid, nm
+        sites = [mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_SITE, i) for i in range(self.model.nsite)]
+        raise RuntimeError(f"No EE site found. Tried {self.cfg.ee_site_candidates}. Sites present: {sites}")
+
+    # kinematics
+    def ee_pose(self) -> Tuple[np.ndarray, np.ndarray]:
+        pos = np.copy(self.data.site_xpos[self.ee_site_id])
+        R = np.copy(self.data.site_xmat[self.ee_site_id]).reshape(3,3)
+        return pos, R
+
+    def jacobian_pos(self) -> np.ndarray:
+        nv = self.model.nv
+        Jp = np.zeros((3, nv)); Jr = np.zeros((3, nv))
+        mujoco.mj_jacSite(self.model, self.data, Jp, Jr, self.ee_site_id)
+        return Jp[:, self.arm_dof]
+
+
+# ------------------------------ IK/Control -----------------------------
+class IKController:
+    def __init__(self, cfg: TeleopConfig, robot: RobotModel):
+        self.cfg = cfg
+        self.robot = robot
+
+    def compute_qdot(self, des_pos: np.ndarray, des_yaw: float) -> np.ndarray:
+        cur_pos, cur_R = self.robot.ee_pose()
+        Jp = self.robot.jacobian_pos()
+
+        # Primary task: Cartesian position tracking with damped least squares
+        e_pos = des_pos - cur_pos
+        v_pos = self.cfg.kp_pos * e_pos
+        JJt = Jp @ Jp.T
+        qdot_pos = Jp.T @ np.linalg.solve(JJt + (self.cfg.damping_lambda**2)*np.eye(3), v_pos)
+
+        # If no secondary objectives enabled, return early
+        if not (self.cfg.enable_yaw_control or self.cfg.enable_posture_objectives):
+            return qdot_pos
+
+        # Build nullspace projector only if needed
+        Jp_pinv = Jp.T @ np.linalg.solve(Jp @ Jp.T + (self.cfg.damping_lambda**2)*np.eye(3), np.eye(3))
+        N = np.eye(7) - Jp_pinv @ Jp
+
+        # Accumulate secondary terms
+        z = np.zeros(7)
+
+        if self.cfg.enable_posture_objectives:
+            q_arm = self.robot.data.qpos[self.robot.arm_dof]
+            j_idx_upright = 1
+            q_upright = q_arm[j_idx_upright]
+            barrier_eps = math.radians(5.0)
+
+            def soft_barrier(q, limit, eps):
+                return math.tanh((abs(q) - limit) / eps) * (1.0 if q >= 0.0 else -1.0)
+
+            z[j_idx_upright] += -self.cfg.j1_center_k * q_upright
+            z[j_idx_upright] += -self.cfg.j1_limit_k  * soft_barrier(q_upright, self.cfg.j1_limit, barrier_eps)
+
+            j_idx_prefbend = 3
+            q_prefbend = q_arm[j_idx_prefbend]
+            z[j_idx_prefbend] += -self.cfg.j2_pref_k * (q_prefbend - self.cfg.j2_pref)
+
+        qdot_yaw = np.zeros(7)
+        if self.cfg.enable_yaw_control:
+            # Orientation Jacobian (angular velocity) for the site
+            nv = self.robot.model.nv
+            Jp_full = np.zeros((3, nv)); Jr_full = np.zeros((3, nv))
+            mujoco.mj_jacSite(self.robot.model, self.robot.data, Jp_full, Jr_full, self.robot.ee_site_id)
+            Jr = Jr_full[:, self.robot.arm_dof]
+
+            # Secondary orientation task: regulate yaw about world Z
+            yaw_cur = math.atan2(cur_R[1,0], cur_R[0,0])
+            yaw_err = wrap_pi(yaw_cur - des_yaw)
+            w = np.array([0.0, 0.0, -self.cfg.kp_yaw * yaw_err])
+            JrJrT = Jr @ Jr.T + (self.cfg.damping_lambda**2) * np.eye(3)
+            qdot_yaw = Jr.T @ np.linalg.solve(JrJrT, w)
+
+        qdot = qdot_pos + N @ (z + qdot_yaw)
+        return qdot
+
+
+# ------------------------------ Rendering ------------------------------
+class Renderer:
+    def __init__(self, cfg: TeleopConfig, robot: RobotModel):
+        self.cfg = cfg
+        self.robot = robot
+        self.cam = mujoco.MjvCamera()
+        self.opt = mujoco.MjvOption()
+        self.scene = mujoco.MjvScene(self.robot.model, maxgeom=20000)
+        # MjrContext requires a current OpenGL context; create after window init
+        self.ctx = None
+        self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        self.cam.distance = 3.0
+        self.cam.azimuth = 160.0
+        self.cam.elevation = -65.0
+        self.cam.lookat = np.array([0.5,0.0,0.35])
+
+    def set_camera(self, cam_index: int):
+        # cam_index < 0 => free, else fixed camera by index
+        if cam_index < 0:
+            self.cam.type = mujoco.mjtCamera.mjCAMERA_FREE
+        else:
+            self.cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
+            self.cam.fixedcamid = cam_index
+
+    def initialize_gl(self):
+        if self.ctx is None:
+            self.ctx = mujoco.MjrContext(self.robot.model, mujoco.mjtFontScale.mjFONTSCALE_150)
+
+    @staticmethod
+    def draw_target_marker(scene, pos, radius, rgba):
+        n = scene.ngeom
+        if n >= scene.maxgeom:
+            return
+        g = scene.geoms[n]
+        size = np.array([radius, 0.0, 0.0], dtype=np.float64)
+        pos  = np.asarray(pos, dtype=np.float64).reshape(3)
+        mat  = np.eye(3, dtype=np.float64).reshape(9)
+        rgba = np.asarray(rgba, dtype=np.float32).reshape(4)
+        mujoco.mjv_initGeom(g, mujoco.mjtGeom.mjGEOM_SPHERE, size, pos, mat, rgba)
+        g.segid = 1
+        scene.ngeom += 1
+
+    def render(self, window, des_pos: np.ndarray, cam_name: str, stickiness_enabled: bool = True, attached_object: str = None):
+        # Ensure GL context-dependent resources exist
+        if self.ctx is None:
+            self.initialize_gl()
+        w, h = glfw.get_framebuffer_size(window)
+        viewport = mujoco.MjrRect(0, 0, w, h)
+        mujoco.mjv_updateScene(self.robot.model, self.robot.data, self.opt, None, self.cam, mujoco.mjtCatBit.mjCAT_ALL, self.scene)
+        Renderer.draw_target_marker(self.scene, des_pos, self.cfg.target_radius, np.array(self.cfg.target_rgba))
+        mujoco.mjr_render(viewport, self.scene, self.ctx)
+        
+        # Create status line with stickiness and attachment info
+        sticky_status = "ON" if stickiness_enabled else "OFF"
+        attach_status = f" | Attached: {attached_object}" if attached_object else ""
+        
+        overlay = (
+            f"Cam: {cam_name} (C) | "
+            "XY: ←/→,↑/↓ | Z: A/D | Grip: F/G | IK: X toggle | "
+            f"Stickiness: {sticky_status} (S toggle){attach_status} |\n"
+            "Reset: B(saved-or-xml), Z(XML) | "
+            "Joint jog (num=+ letter=-): 1/Q, 2/W, 3/E, 4/R, 5/T, 6/Y, 7/U (Shift=coarse) |\n "
+            "Rec: M start/stop, N finalize, J=delete last rec | ESC quits"
+        )
+        mujoco.mjr_overlay(mujoco.mjtFontScale.mjFONTSCALE_150, mujoco.mjtGridPos.mjGRID_BOTTOMLEFT, viewport, overlay, "", self.ctx)
+        glfw.swap_buffers(window)
+        glfw.poll_events()
+
+
+# ------------------------------ Gripper -------------------------------
+class GripperController:
+    def __init__(self, robot: RobotModel):
+        self.robot = robot
+        self.target = self.robot.grip_open_val
+
+    def update_from_input(self, inp: InputState):
+        if not self.robot.has_gripper:
+            return
+        if inp.grip_close:
+            self.target = self.robot.grip_close_val
+        if inp.grip_open:
+            self.target = self.robot.grip_open_val
+
+    def apply(self):
+        if self.robot.has_gripper:
+            self.robot.data.ctrl[self.robot.grip_act] = self.target
+
+
+# ------------------------------ Teleop App ----------------------------
+class TeleopApp:
+    def __init__(self, cfg: Optional[TeleopConfig] = None):
+        self.cfg = cfg or TeleopConfig()
+        self.robot = RobotModel(self.cfg)
+        self.ik = IKController(self.cfg, self.robot)
+        self.renderer = Renderer(self.cfg, self.robot)
+        self.inp_ctrl = InputController(self.cfg, self.robot.model, self.renderer.scene, self.renderer.cam)
+        self.gripper = GripperController(self.robot)
+        # IK enable toggle (X key). When False, IK target tracking is disabled.
+        self.ik_enabled: bool = True
+        # Grasp stickiness toggle (S key). When False, objects won't stick to gripper.
+        self.stickiness_enabled: bool = True
+        # Sticky attach state
+        self.attached: Optional[str] = None
+        self.attach_offset_pos = np.zeros(3)
+        self.attach_offset_mat = np.eye(3)
+        # Saved state (memory)
+        self.saved_qpos: Optional[np.ndarray] = None
+        self.saved_qvel: Optional[np.ndarray] = None
+
+        # Try to auto-load latest saved state from disk
+        try:
+            from pathlib import Path
+            import glob
+            pwd = os.getenv("MAIN_DIRECTORY")
+            save_dir = os.path.join(pwd, "finetuning", "saved_robot_states")
+            if os.path.exists(save_dir):
+                files = sorted(glob.glob(os.path.join(save_dir, "state_*.npz")))
+                if files:
+                    latest = files[-1]
+                    arr = np.load(latest)
+                    self.saved_qpos = arr["qpos"]; self.saved_qvel = arr["qvel"]
+                    # Apply immediately
+                    self.robot.data.qpos[:] = self.saved_qpos
+                    self.robot.data.qvel[:] = self.saved_qvel
+                    mujoco.mj_forward(self.robot.model, self.robot.data)
+                    print(f"[INFO] Loaded saved robot state: {latest}")
+        except Exception as e:
+            print("[WARN] Could not auto-load saved state:", e)
+
+        # desired targets
+        ee_pos, ee_R = self.robot.ee_pose()
+        self.des_pos = ee_pos.copy()
+        # Track desired yaw (about world Z) from current orientation
+        self.des_j7 = float(math.atan2(ee_R[1,0], ee_R[0,0]))
+
+        # Cameras: from config if provided, else free + all fixed names
+        all_fixed = [
+            mujoco.mj_id2name(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, i) or f"cam{i}"
+            for i in range(self.robot.model.ncam)
+        ]
+
+        print(f"[INFO] Available cameras: {all_fixed}")
+
+        if self.cfg.camera_cycle:
+            # validate names; allow "free" and any fixed camera name
+            requested = list(self.cfg.camera_cycle)
+            fixed_in_requested = []
+            self.cam_names = []
+            for nm in requested:
+                if nm == "free":
+                    self.cam_names.append(nm)
+                elif nm in all_fixed:
+                    self.cam_names.append(nm)
+                    fixed_in_requested.append(nm)
+            # If no valid fixed cameras were requested, fall back to include all fixed
+            if not fixed_in_requested:
+                # Ensure 'free' is first, then add all fixed cameras
+                self.cam_names = ["free"] + all_fixed
+        else:
+            self.cam_names = ["free"] + all_fixed
+        self.cam_index = 0  # 0 => free; n>0 => fixed id n-1
+        self.renderer.set_camera(-1)
+
+    def _create_window(self):
+        if not glfw.init():
+            raise RuntimeError("GLFW init failed")
+        glfw.window_hint(glfw.SAMPLES, 4)
+        window = glfw.create_window(1280, 820, "MuJoCo Panda Teleop (SOLID)", None, None)
+        if not window:
+            glfw.terminate()
+            raise RuntimeError("GLFW window create failed")
+        glfw.make_context_current(window)
+        glfw.swap_interval(1)
+        return window
+
+    def run(self):
+        window = self._create_window()
+
+        on_key = self.inp_ctrl.install(window)
+        # Disable video recording while keeping parquet/meta recording.
+        # Create recorder with FPS derived from CONTROL_HZ
+        recorder = create_lerobot_recorder(self.robot.model, self.robot.data, "panda_teleop_dataset", record_video=False)
+        # Provide actuator names in the exact recorded order for mapping later
+        try:
+            names = [mujoco.mj_id2name(self.robot.model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) for i in self.robot.full_arm_act_ids]
+            recorder._actuator_names = names
+        except Exception:
+            pass
+        enhanced_on_key = add_lerobot_controls(recorder, on_key)
+        glfw.set_key_callback(window, enhanced_on_key)
+        # Initialize GL-dependent renderer state now that a context exists
+        self.renderer.initialize_gl()
+        # Track C edge to robustly toggle camera even if callbacks are wrapped
+        self._cam_toggle_down = False
+
+        # Override control Hz from env to keep in sync system-wide
+        try:
+            env_hz = float(os.getenv("CONTROL_HZ", str(self.cfg.ctrl_hz)))
+            if env_hz > 0:
+                self.cfg.ctrl_hz = env_hz
+        except Exception:
+            pass
+
+        dt_ctrl = 1.0 / self.cfg.ctrl_hz
+        last_time = time.time()
+        accum = 0.0
+        tick_count = 0  # global control tick counter for deterministic timestamps
+
+        print(
+            "[INFO] EE site:",
+            self.robot.ee_site_name,
+            "Controls: arrows=XY, A/D=Z, joint jog 1/Q..7/U, F/G=grip, V=save, B=reset(saved-or-xml), Z=reset(XML), C=toggle camera, X=toggle IK, M=start/stop rec, N=finalize, J=delete last recording, ESC=quit",
+        )
+
+        while not glfw.window_should_close(window):
+            if glfw.get_key(window, glfw.KEY_ESCAPE) == glfw.PRESS:
+                break
+
+            now = time.time()
+            dt = now - last_time
+            last_time = now
+            accum += dt * self.cfg.ctrl_hz
+            substeps = min(self.cfg.subst_steps, int(accum))
+            accum -= substeps
+
+            # Note: recording will occur per control substep (tick) after physics step
+
+            # Handle camera toggle BEFORE control tick clears one-shot flags.
+            # Also detect C key edge in case callbacks are overridden.
+            c_pressed = glfw.get_key(window, glfw.KEY_C) == glfw.PRESS
+            cam_toggle = self.inp_ctrl.inp.toggle_camera or (c_pressed and not self._cam_toggle_down)
+            if cam_toggle:
+                self.cam_index = (self.cam_index + 1) % len(self.cam_names)
+                name = self.cam_names[self.cam_index]
+                if name == "free":
+                    self.renderer.set_camera(-1)
+                    print("[INFO] Camera switched to: free (C)")
+                else:
+                    cam_id = mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_CAMERA, name)
+                    if cam_id >= 0:
+                        self.renderer.set_camera(cam_id)
+                        print(f"[INFO] Camera switched to fixed: {name} (id={cam_id}) (C)")
+                    else:
+                        print(f"[WARN] Camera name not found: {name}")
+            self._cam_toggle_down = c_pressed
+
+            # Toggle IK tracking if requested
+            if self.inp_ctrl.inp.toggle_ik:
+                self.ik_enabled = not self.ik_enabled
+                print(f"[INFO] IK tracking {'ENABLED' if self.ik_enabled else 'DISABLED'} (X)")
+            
+            # Toggle grasp stickiness if requested
+            if self.inp_ctrl.inp.toggle_stickiness:
+                self.stickiness_enabled = not self.stickiness_enabled
+                print(f"[INFO] Grasp stickiness {'ENABLED' if self.stickiness_enabled else 'DISABLED'} (S)")
+                # If stickiness is disabled, release any attached object
+                if not self.stickiness_enabled and self.attached is not None:
+                    print(f"[INFO] Released {self.attached} due to stickiness being disabled")
+                    self.attached = None
+
+            for _ in range(substeps):
+                # Compute and apply control for this tick
+                self._tick_control(dt_ctrl)
+                # Step physics once at control rate
+                mujoco.mj_step(self.robot.model, self.robot.data)
+                # Record exactly once per control tick, after stepping
+                if recorder.is_recording:
+                    current_action = self.robot.data.ctrl[self.robot.full_arm_act_ids].copy()
+                    recorder.record_frame(
+                        action=current_action,
+                        done=False,
+                        tick_index=tick_count,
+                        ctrl_hz=self.cfg.ctrl_hz
+                    )
+                tick_count += 1
+
+            cam_name = self.cam_names[self.cam_index]
+
+            self.renderer.render(window, self.des_pos, cam_name, self.stickiness_enabled, self.attached)
+
+        glfw.terminate()
+        if recorder.is_recording:
+            recorder.stop_recording()
+        recorder.finalize_dataset()
+
+    def _tick_control(self, dt_ctrl: float):
+        # Save state if requested
+        if self.inp_ctrl.inp.save_state:
+            self.saved_qpos = np.copy(self.robot.data.qpos)
+            self.saved_qvel = np.copy(self.robot.data.qvel)
+            # Also write to disk (timestamped in saved_robot_states)
+            try:
+                import time
+                pwd = os.getenv("MAIN_DIRECTORY")
+                save_dir = os.path.join(pwd, "finetuning", "saved_robot_states")
+                os.makedirs(save_dir, exist_ok=True)
+                ts = time.strftime("%Y%m%d_%H%M%S")
+                path = os.path.join(save_dir, f"state_{ts}.npz")
+                np.savez(path, qpos=self.saved_qpos, qvel=self.saved_qvel)
+                print(f"[INFO] Saved robot state to {path}")
+                # Additionally save only single-robot joint state for easy replication across duplicates
+                try:
+                    base_joint_names = [f"joint{i}" for i in range(1,8)] + ["finger_joint1", "finger_joint2"]
+                    names_out = []
+                    qpos_out = []
+                    qvel_out = []
+                    prefix = self.cfg.add_prefix if self.cfg.use_prefix else ""
+                    for nm in base_joint_names:
+                        full = f"{prefix}{nm}"
+                        jid = mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_JOINT, full)
+                        if jid < 0:
+                            continue
+                        jtype = int(self.robot.model.jnt_type[jid])
+                        if jtype not in (mujoco.mjtJoint.mjJNT_HINGE, mujoco.mjtJoint.mjJNT_SLIDE):
+                            continue
+                        qposadr = int(self.robot.model.jnt_qposadr[jid])
+                        dofadr = int(self.robot.model.jnt_dofadr[jid])
+                        names_out.append(nm)
+                        qpos_out.append(float(self.robot.data.qpos[qposadr]))
+                        qvel_out.append(float(self.robot.data.qvel[dofadr]))
+                    if names_out:
+                        saved_dir2 = os.path.join(pwd, "xml_robots", "saved_state")
+                        os.makedirs(saved_dir2, exist_ok=True)
+                        path2 = os.path.join(saved_dir2, f"robot_joints_{ts}.npz")
+                        np.savez(path2, joint_names=np.array(names_out, dtype=object), qpos=np.array(qpos_out), qvel=np.array(qvel_out))
+                        print(f"[INFO] Saved per-robot joint state to {path2} ({len(names_out)} joints)\
+                              Use this to replicate across duplicated robots.")
+                    else:
+                        print("[WARN] No hinge/slide joints found to save per-robot joint state.")
+                except Exception as e:
+                    print("[WARN] Could not save per-robot joint-only state:", e)
+            except Exception as e:
+                print("[WARN] Could not save robot state to file:", e)
+
+        # Reset scene if requested (B = saved if available, else XML; Z = always XML)
+        if self.inp_ctrl.inp.reset:
+            if self.saved_qpos is not None and self.saved_qvel is not None:
+                self.robot.data.qpos[:] = self.saved_qpos
+                self.robot.data.qvel[:] = self.saved_qvel
+                mujoco.mj_forward(self.robot.model, self.robot.data)
+                print("[INFO] Reset to saved state (V)")
+            else:
+                mujoco.mj_resetData(self.robot.model, self.robot.data)
+                mujoco.mj_forward(self.robot.model, self.robot.data)
+                print("[INFO] Reset to XML default state")
+            ee_pos, _ = self.robot.ee_pose()
+            self.des_pos = ee_pos.copy()
+            self.attached = None
+
+        if self.inp_ctrl.inp.reset_xml:
+            mujoco.mj_resetData(self.robot.model, self.robot.data)
+            mujoco.mj_forward(self.robot.model, self.robot.data)
+            print("[INFO] Reset to XML default state (Z)")
+            ee_pos, _ = self.robot.ee_pose()
+            self.des_pos = ee_pos.copy()
+            self.attached = None
+
+        # Cartesian target updates (for IK mode)
+        if self.inp_ctrl.inp.left:  self.des_pos[0] -= self.cfg.xy_step
+        if self.inp_ctrl.inp.right: self.des_pos[0] += self.cfg.xy_step
+        if self.inp_ctrl.inp.up:    self.des_pos[1] += self.cfg.xy_step
+        if self.inp_ctrl.inp.down:  self.des_pos[1] -= self.cfg.xy_step
+        if self.inp_ctrl.inp.z_up:   self.des_pos[2] += self.cfg.z_step
+        if self.inp_ctrl.inp.z_down: self.des_pos[2] -= self.cfg.z_step
+
+        # Joint jog takes precedence over IK when any jog key is pressed
+        jog_active = any(self.inp_ctrl.inp.jog_plus) or any(self.inp_ctrl.inp.jog_minus)
+        q = self.robot.data.qpos[self.robot.arm_dof]
+        # Follow IK toward the Cartesian target unless IK is disabled
+        if self.ik_enabled:
+            qdot = self.ik.compute_qdot(self.des_pos, self.des_j7)
+            q_des = q + qdot * dt_ctrl
+        else:
+            q_des = q.copy()
+        # If jogging, add a joint-space offset on top of IK
+        if jog_active:
+            step = self.cfg.joint_step * (self.cfg.joint_step_coarse_factor if self.inp_ctrl.inp.shift else 1.0)
+            actuator_amount = len(self.robot.arm_act_ids)
+            delta = np.zeros(actuator_amount)
+            for i in range(actuator_amount):
+                if self.inp_ctrl.inp.jog_plus[i]:
+                    delta[i] += step
+                if self.inp_ctrl.inp.jog_minus[i]:
+                    delta[i] -= step
+            q_des = q_des + delta
+        # Clamp to actuator control ranges
+        for i, aid in enumerate(self.robot.arm_act_ids):
+            lo, hi = self.robot.model.actuator_ctrlrange[aid]
+            q_des[i] = float(clamp(q_des[i], lo, hi))
+
+        # Handle stickiness and gripper before clearing one-shot flags
+        if False:
+            self._handle_grasp_stickiness()
+        self.gripper.update_from_input(self.inp_ctrl.inp)
+        self.inp_ctrl.inp.reset_oneshot()
+
+        self.robot.data.ctrl[:] = 0.0
+        for i, aid in enumerate(self.robot.arm_act_ids):
+            lo, hi = self.robot.model.actuator_ctrlrange[aid]
+            self.robot.data.ctrl[aid] = q_des[i] # already clamped
+        # sticky grasp maintenance already updated above before reset
+        self.gripper.apply()
+
+    def _handle_grasp_stickiness(self):
+        """Handle sticky grasping when stickiness is enabled"""
+        # Attach when closing near a known object
+        if self.inp_ctrl.inp.grip_close and self.attached is None:
+            ee_pos, ee_R = self.robot.ee_pose()
+            # Check for graspable objects (can be extended to include more objects)
+            graspable_objects = ["wine_bottle", "cup", "beer_glass1", "Wine_glass1"]
+            
+            for body_name in graspable_objects:
+                bid = self.robot.body_name_to_id.get(body_name, -1)
+                if bid < 0:
+                    continue
+                body_pos = np.copy(self.robot.data.xpos[bid])
+                distance = np.linalg.norm(body_pos - ee_pos)
+                
+                if distance < self.cfg.grasp_capture_dist:
+                    # compute offset
+                    body_R = self.robot.data.xmat[bid].reshape(3,3)
+                    self.attach_offset_mat = ee_R.T @ body_R
+                    self.attach_offset_pos = ee_R.T @ (body_pos - ee_pos)
+                    self.attached = body_name
+                    print(f"[INFO] Sticky grasp activated: {body_name} (distance: {distance:.3f}m)")
+                    break
+
+        # Release on open or if stickiness is disabled
+        if self.inp_ctrl.inp.grip_open:
+            if self.attached is not None:
+                print(f"[INFO] Released: {self.attached}")
+                self.attached = None
+
+        # Drive attached body's free joint qpos to follow EE (strong stickiness)
+        if self.attached is not None:
+            # Map object names to their corresponding joint names
+            joint_mapping = {
+                "wine_bottle": "bottle_free",
+                "cup": "cup_free", 
+                "beer_glass1": "beer_glass_free1",
+                "beer_glass2": "beer_glass_free2",
+                "Wine_glass1": "wine_glass_free1"
+            }
+            
+            jname = joint_mapping.get(self.attached)
+            if jname and jname in self.robot.jnt_name_to_qposadr:
+                adr = self.robot.jnt_name_to_qposadr[jname]
+                ee_pos, ee_R = self.robot.ee_pose()
+                R = ee_R @ self.attach_offset_mat
+                p = ee_pos + ee_R @ self.attach_offset_pos
+                
+                # rotation to quaternion wxyz
+                tr = R[0,0] + R[1,1] + R[2,2]
+                if tr > 0:
+                    qw = math.sqrt(1.0 + tr) / 2.0
+                    qx = (R[2,1] - R[1,2]) / (4*qw)
+                    qy = (R[0,2] - R[2,0]) / (4*qw)
+                    qz = (R[1,0] - R[0,1]) / (4*qw)
+                else:
+                    qw, qx, qy, qz = 1.0, 0.0, 0.0, 0.0
+                
+                self.robot.data.qpos[adr:adr+7] = np.array([p[0], p[1], p[2], qw, qx, qy, qz])
+                
+                # Zero velocities to keep object glued
+                dofadr = self.robot.model.jnt_dofadr[mujoco.mj_name2id(self.robot.model, mujoco.mjtObj.mjOBJ_JOINT, jname)]
+                self.robot.data.qvel[dofadr:dofadr+6] = 0.0
+                mujoco.mj_forward(self.robot.model, self.robot.data)
+
+
+def main():
+    TeleopApp().run()
+
+
+if __name__ == "__main__":
+    main()

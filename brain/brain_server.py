@@ -8,10 +8,12 @@ import pickle
 import struct
 import time
 import threading
+import signal  # Add signal import
 import numpy as np
 from pathlib import Path
 
-from mujoco_folder.packet_example import Packet
+from mujoco_folder.packet_example import Packet, RobotListPacket
+from .policy_inference.policy_control_inference import PolicyInference
 
 from logger_config import get_logger
 from dotenv import load_dotenv
@@ -25,51 +27,18 @@ class BrainServer:
         """
         self.host = host
         self.port = port
-        self.running = True
+        self.running = False
         self.server_socket = None
         self.logger = get_logger('BrainServer')
-        
+        self.use_test_mapper = os.getenv("USE_TEST_MAPPER", "0") == "1"
+        self.use_replay_mapper = os.getenv("USE_REPLAY_MAPPER", "0") == "1"
+        self.robot_dict = None
+        self.policy_inference = None
+
+        # Optional episode replay mapper or joint test mapper
+        self.mapper = None
+
         # Setup networking
-        self.setup_socket()
-        self.logger.info("Brain server initialized")
-
-    def setup_socket(self):
-        """Set up the TCP server socket"""
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind((self.host, self.port))
-        self.server_socket.listen(10)
-        self.logger.info(f"Brain server listening on {self.host}:{self.port}")
-
-    def fill_action(self, packet):
-        """
-        Generate action based on packet state.
-        This is where the actual policy/model inference would happen.
-        """
-        time_now = time.time()
-        robot_id = packet.robot_id
-        mission = packet.mission
-        
-        # Stub: Generate dummy action based on robot state
-        # In real implementation, this would use your trained policy
-        if hasattr(packet, 'qpos') and packet.qpos is not None:
-            action_dim = len(packet.qpos)
-        else:
-            action_dim = 7  # Default for 7-DOF robot arm
-            
-        # Generate dummy action (replace with actual policy inference)
-        dummy_action = np.random.uniform(-0.1, 0.1, action_dim).tolist()
-        
-        # Log what we're doing
-        self.logger.debug(f"Generating action for robot {robot_id}, mission: {mission}")
-        self.logger.debug(f"Action: {dummy_action}")
-        
-        # Fill the action in the packet
-        packet.action = dummy_action
-        time_taken = time.time() - time_now
-        self.logger.debug(f"Action generated for robot {robot_id} in {time_taken:.2f} seconds")
-        
-        return packet
 
     def _recv_packet(self, client_socket):
         """Receive a length-prefixed pickled packet"""
@@ -100,9 +69,19 @@ class BrainServer:
                 pkt = self._recv_packet(client_socket)
                 if pkt is None:
                     break
-                    
+                # if the type of packet is RobotListPacket, update robot_dict
+                if isinstance(pkt, RobotListPacket):
+                    self.robot_dict = pkt.robot_dict
+                    self.policy_inference = PolicyInference(robot_dict=self.robot_dict) 
+                    self.logger.info(f"Updated robot_dict: {self.robot_dict}")
+                    reply = pkt
+                    self._send_packet(reply, client_socket)
+                    continue
+                if self.policy_inference is None:
+                    self.logger.error("Send robot_dict first using RobotListPacket")
+                    raise ValueError("robot_dict not set in BrainServer")
                 # Process packet and generate action
-                reply = self.fill_action(pkt)
+                reply = self.policy_inference.fill_action(pkt)
                 self._send_packet(reply, client_socket)
                 
         except Exception as e:
@@ -111,30 +90,73 @@ class BrainServer:
             client_socket.close()
             self.logger.info(f"Brain client {addr} disconnected")
 
+    def setup_socket(self):
+        """Set up the TCP server socket"""
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind((self.host, self.port))
+            self.server_socket.listen(5)
+            self.logger.info(f"Brain server listening on {self.host}:{self.port}")
+        except OSError as e:
+            if "Address already in use" in str(e):
+                import subprocess
+                result = subprocess.run(['lsof', '-ti', f':{self.port}'], capture_output=True, text=True)
+                if result.stdout.strip():
+                    pid = result.stdout.strip()
+                    self.logger.warning(f"Port {self.port} in use by process {pid}, killing it...")
+                    subprocess.run(['kill', '-9', pid])
+                    time.sleep(0.5)  # Brief pause
+                    self.setup_socket()  # Retry
+                else:
+                    raise
+            else:
+                raise
+        
     def run(self):
         """Start accepting clients"""
         self.logger.info("Brain server starting...")
+        self.setup_socket()
+        self.running = True
         
         try:
             while self.running:
-                client, addr = self.server_socket.accept()
-                t = threading.Thread(
-                    target=self.handle_client,
-                    args=(client, addr),
-                    daemon=True
-                )
-                t.start()
+                try:
+                    client, addr = self.server_socket.accept()
+                    client_thread = threading.Thread(
+                        target=self.handle_client,
+                        args=(client, addr),
+                        daemon=True
+                    )
+                    client_thread.start()
+                    self.logger.info("Brain server initialized")
+                except OSError:
+                    if self.running:  # Only log if not intentionally stopping
+                        self.logger.error("Brain server socket error")
+                    break
         except KeyboardInterrupt:
-            self.logger.info("Brain server interrupted")
+            self.logger.info("Brain server interrupted by user (Ctrl+C)")
+        except Exception as e:
+            self.logger.error(f"Brain server error: {e}")
         finally:
-            self.close()
+            self.shutdown()
 
-    def close(self):
-        """Cleanup server socket"""
-        self.logger.info("Shutting down brain server...")
+    def shutdown(self):
+        """Clean shutdown of the brain server"""
+        self.logger.info("Stopping brain server...")
         self.running = False
         if self.server_socket:
-            self.server_socket.close()
+            try:
+                self.server_socket.close()
+            except Exception as e:
+                self.logger.warning(f"Error closing brain server socket: {e}")
+            finally:
+                self.server_socket = None
+        self.logger.info("Brain server stopped")
+
+    def close(self):
+        """Cleanup server socket (called by shutdown)"""
+        self.shutdown()
 
 
 class BrainClient:
@@ -149,6 +171,20 @@ class BrainClient:
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket.connect((self.host, self.port))
         self.logger.info(f"Connected to Brain server at {self.host}:{self.port}")
+
+    @staticmethod
+    def set_robot_dict(robot_dict):
+        """
+        Set the dictionary of robots in the server.
+        """
+        client = BrainClient()
+        client.connect()
+        packet = RobotListPacket(robot_id='robot_list', robot_dict=robot_dict)
+        packet = client.send_and_recv(packet)
+        if packet is None or not hasattr(packet, 'robot_list'):
+            raise ValueError("Failed to receive robot list from server")
+        client.close()
+        return
     
     def send_and_recv(self, packet):
         """
@@ -176,7 +212,9 @@ class BrainClient:
                     raise ConnectionError("Incomplete payload: connection closed")
                 buf += chunk
             reply = pickle.loads(buf)
-            self.logger.debug(f"Brain send_and_recv - received reply with action: {reply.action}")
+            # if its not a RobotListPacket, log the action
+            if not isinstance(reply, RobotListPacket):
+                self.logger.debug(f"Brain send_and_recv - received reply with action: {reply.action}")
             return reply
         except Exception:
             self.logger.error("Exception in brain send_and_recv", exc_info=True)
@@ -201,8 +239,4 @@ class BrainClient:
 
 if __name__ == '__main__':
     server = BrainServer()
-    try:
-        server.run()
-    except KeyboardInterrupt:
-        print("\nShutting down brain server...")
-        server.close()
+    server.run()

@@ -13,6 +13,8 @@ class Packet:
     joint_names: Optional[List[str]] = None
     wall_camera: Optional[np.ndarray] = None
     wrist_camera: Optional[np.ndarray] = None
+    mission_status: Optional[str] = None
+    submission_status: Optional[str] = None
     submission: Optional[str] = None
     mission: Optional[str] = None
     time: Optional[float] = None
@@ -21,3 +23,5 @@ class Packet:
 class RobotListPacket:
     robot_id: str = 'robot_list'
     robot_list: List[str] = None
+    robot_dict: Optional[dict] = None
+    

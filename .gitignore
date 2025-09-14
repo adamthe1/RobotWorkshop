@@ -6,3 +6,15 @@ __pycache__/
 logs/
 .env
 datasets/
+*/.venv/
+MUJOCO_LOG.TXT
+AGENTS.md
+CLAUDE.md
+finetuning/datasets/
+finetuning/example_pouring/videos/*
+example_gifs/imagesforgif/
+example_gifs/recording*
+franka_emika_panda/
+brain/octo_inference.py 
+franka_emika_panda
+mujoco_folder/make_gif.py
