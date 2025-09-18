@@ -48,6 +48,7 @@ class LightweightViewer:
         self._record_scale: float = 0.4  # downscale factor (e.g., 0.5)
         # Output directory for frames (set on start)
         self._frames_dir: Optional[str] = None
+        self._exit_requested = False
 
     def launch(self) -> "LightweightViewer":
         if not glfw.init():
@@ -90,7 +91,8 @@ class LightweightViewer:
     def _on_key(self, window, key, scancode, action, mods):
         """Handle keyboard input"""
         if key == glfw.KEY_ESCAPE and action == glfw.PRESS:
-            pass
+            glfw.set_window_should_close(self.window, True)
+            self._exit_requested = True
         if key == glfw.KEY_R and action == glfw.PRESS:
             if not self._recording:
                 self._start_recording()
@@ -268,3 +270,7 @@ class LightweightViewer:
     def set_record_scale(self, scale: float) -> None:
         """Set downscale factor for recording, e.g., 0.5 to halve resolution."""
         self._record_scale = float(scale) if scale > 0 else 1.0
+    
+    def exit_requested(self) -> bool:
+        """Return True if user requested exit (e.g., pressed ESC)."""
+        return self._exit_requested

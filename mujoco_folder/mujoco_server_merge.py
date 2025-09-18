@@ -206,16 +206,6 @@ class MuJoCoServer:
             self.viewer = LightweightViewer(self.model, self.data, 800, 600, "MuJoCo Viewer").launch()
             self.logger.info("Lightweight viewer initialized successfully; entering render loop")
 
-            # Render loop at ~60 FPS in this thread
-            dt = 1.0 / self.control_hz
-            while self.running and self.viewer.is_running():
-                with self.locker:
-                    # Render the current scene safely while physics may update
-                    self.viewer.sync()
-                time.sleep(dt)
-
-            # Viewer loop ended; leave server running until terminal exit
-
         except Exception as e:
             self.logger.error(f"Failed to initialize lightweight viewer: {e}")
             self.viewer = None
@@ -323,6 +313,7 @@ class MuJoCoServer:
                 # 3) Update snapshot after stepping (critical: while still holding lock)
                 self.robot_control.update_snapshot()
 
+            
             # 4) Viewer renders from its own thread that owns the GL context
             # (no changes needed here)
 
@@ -331,18 +322,43 @@ class MuJoCoServer:
             time.sleep(max(0, next_time - time.time()))
 
     def run(self):
-        """Start viewer thread, clients, and dispatch"""
+        """Run the server: viewer in main thread, simulation and networking in background threads."""
         try:
             self.logger.info(f"With viewer: {not self.no_viewer}")
-            if self.no_viewer == 0:
-                t = threading.Thread(target=self.start_viewer, daemon=True)
-                t.start()
+            self.start_viewer()
 
+            # Start simulation in a background thread
             sim_t = threading.Thread(target=self.simulation_thread, daemon=True)
             sim_t.start()
 
-            self.logger.info(f"Server listening on {self.host}:{self.port}")
-            while True:
+            # Start networking in a background thread
+            net_t = threading.Thread(target=self.network_thread, daemon=True)
+            net_t.start()
+
+            # Main thread: run the viewer loop (blocking, processes events and calls sync)
+            if self.viewer is not None and self.viewer.is_running():
+                self.logger.info("Entering viewer loop in main thread")
+                while self.viewer.is_running():
+                    with self.locker:
+                        self.viewer.sync()
+                    if self.viewer.exit_requested():
+                        self.logger.info("Viewer requested exit, shutting down server.")
+                        raise KeyboardInterrupt
+                    time.sleep(1.0 / self.control_hz)  # Or whatever is smooth for your viewer
+
+        except KeyboardInterrupt:
+            print("Server interrupted by user")
+            self.logger.info("Server interrupted by user (Ctrl+C)")
+        except Exception as e:
+            self.logger.error(f"Server error: {e}")
+        finally:
+            self.close()
+
+    def network_thread(self):
+        """Accept clients and spawn handler threads (runs in background)."""
+        self.server_socket.settimeout(0.1)
+        while self.running:
+            try:
                 client, addr = self.server_socket.accept()
                 t = threading.Thread(
                     target=self.handle_client,
@@ -350,13 +366,8 @@ class MuJoCoServer:
                     daemon=True
                 )
                 t.start()
-                
-        except KeyboardInterrupt:
-            self.logger.info("Server interrupted by user (Ctrl+C)")
-        except Exception as e:
-            self.logger.error(f"Server error: {e}")
-        finally:
-            self.close()
+            except socket.timeout:
+                continue
 
     def close(self):
         """Cleanup sockets and viewer"""
