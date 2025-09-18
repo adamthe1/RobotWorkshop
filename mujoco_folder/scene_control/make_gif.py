@@ -44,7 +44,7 @@ def load_frames(session_dir: str) -> Tuple[List[Image.Image], List[int]]:
     frames: List[Image.Image] = []
     timestamps: List[int] = []
     for _, ts, f in items:
-        img = Image.open(os.path.join(session_dir, f)).convert("P", palette=Image.ADAPTIVE, colors=128)
+        img = Image.open(os.path.join(session_dir, f))
         frames.append(img)
         timestamps.append(ts if ts is not None else 0)
     return frames, timestamps
@@ -114,6 +114,11 @@ def main():
         sys.exit(1)
 
     durations = compute_durations_ms(timestamps, speed=speed)
+
+    # Take only the first half of the frames and durations
+    half = len(frames) // 2
+    frames = frames[:half]
+    durations = durations[:half]
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = os.path.join(gifs_dir, f"recording_{timestamp}.gif")

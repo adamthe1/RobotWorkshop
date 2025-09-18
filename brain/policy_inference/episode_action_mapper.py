@@ -36,7 +36,7 @@ class EpisodeActionMapper:
         self.build_actions_from_obs = True
         self.slicing = 1
         self.loop = False
-        self.speed = 3.0
+        self.speed = 2.0
         self.episode_actions = {}
         self.episode_lengths = {}
 
