@@ -111,7 +111,7 @@ class RobotBodyControl:
         self.camera_renderer = CameraRenderer(model)
         
 
-        # Create initial snapshot
+        # Create initial snapshot   
         self.update_snapshot()
 
     def update_snapshot(self):
@@ -218,7 +218,7 @@ class RobotBodyControl:
 
 
 
-    def fill_packet(self, packet, no_camera=False):
+    def fill_packet(self, packet, no_camera=True):
         """Fill packet with improved error handling using snapshot data"""
         logger.debug(f"[fill_packet] Called with robot_id = {packet.robot_id}")
         
@@ -226,7 +226,9 @@ class RobotBodyControl:
             robot_id = packet.robot_id
             
             # Get current snapshot for thread-safe state access
+            logger.debug(f"[fill_packet] Getting snapshot for robot_id = {robot_id}")
             snapshot = self.get_snapshot()
+            logger.debug(f"[fill_packet] Snapshot version {snapshot.version} obtained for robot_id = {robot_id}")
             if not snapshot:
                 logger.warning("[fill_packet] No snapshot available, using direct data access")
                 snapshot = None

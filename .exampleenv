@@ -43,9 +43,6 @@ LOG_NO_CONSOLE = 1
 # run simulation without viewer (lighter)
 NO_VIEWER = 0
 
-# Reduce network payload by omitting camera images in state packets (use when policy doesn't need images)
-NO_CAMERA_IN_STATE = 1
-
 # LLM API Keys (Replace 'your_api_key_here' with your actual API key)
 # THe simulation can run without these keys, but LLM features will be disabled
 OPENAI_API_KEY = "your_api_key_here"

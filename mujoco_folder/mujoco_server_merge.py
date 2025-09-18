@@ -285,9 +285,11 @@ class MuJoCoServer:
                     self.robot_control.apply_commands(pkt)
                     reply = pkt
                 else:
+                    self.logger.debug(f"Received state request for robot {pkt.robot_id} socket {addr}")
                     # Allow disabling camera images in state to reduce payload
-                    no_cam = os.getenv("NO_CAMERA_IN_STATE", "0").strip() in ("1", "true", "yes", "on")
-                    reply = self.robot_control.fill_packet(pkt, no_camera=no_cam)
+                    self.logger.debug(f"About to call fill_packet for robot {pkt.robot_id} socket {addr}")
+                    reply = self.robot_control.fill_packet(pkt, no_camera=True)
+                    self.logger.debug(f"fill_packet completed for robot {pkt.robot_id} socket {addr}")
                 self._send_packet(reply, client_socket)  # Pass socket
         except Exception as e:
             self.logger.error(f"Error in client loop: {e}")
@@ -356,18 +358,15 @@ class MuJoCoServer:
 
     def network_thread(self):
         """Accept clients and spawn handler threads (runs in background)."""
-        self.server_socket.settimeout(0.1)
         while self.running:
-            try:
-                client, addr = self.server_socket.accept()
-                t = threading.Thread(
-                    target=self.handle_client,
-                    args=(client, addr),
-                    daemon=True
-                )
-                t.start()
-            except socket.timeout:
-                continue
+            
+            client, addr = self.server_socket.accept()
+            t = threading.Thread(
+                target=self.handle_client,
+                args=(client, addr),
+                daemon=True
+            )
+            t.start()
 
     def close(self):
         """Cleanup sockets and viewer"""

@@ -20,7 +20,7 @@ class EmbodimentManager:
         
         self.robot_camera_mapper = {
             'FrankaPanda': ['wrist_cam', 'main_cam'],
-            'SO101': ['wrist_cam', 'base_cam']
+            'SO101': ['wrist_cam', 'main_cam']
         }
         
         self.robot_actuator_mapper = {
