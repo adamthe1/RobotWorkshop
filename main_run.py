@@ -15,10 +15,19 @@ from control_panel.robot_queue_locks import QueueClient
 from pathlib import Path
 from mujoco_folder.server_manager import ServerManager
 
-load_dotenv()
+def ensure_env_file():
+    env_path = ".env"
+    if not os.path.exists(env_path):
+        cwd = os.getcwd()
+        print(f"[WARN] No .env file found. Creating one at {env_path} with MAIN_DIRECTORY={cwd}")
+        with open(env_path, "w") as f:
+            f.write(f"MAIN_DIRECTORY={cwd}\n")
+    load_dotenv(env_path)
+
 
 class MainOrchestrator:
     def __init__(self):
+        ensure_env_file()
         self.logger = get_logger('MainOrchestrator')
         
         self.server_manager = ServerManager()
