@@ -98,6 +98,11 @@ def wrap_pi(a):
 
 # ------------------------------ Input I/O ------------------------------
 class InputState:
+    """
+    Keeps the current input from keyboard and mouse. 
+    It has simple booleans for arrows, z movement, shift, and mouse drags. 
+    It also stores one-shot actions like save, reset, toggle camera, toggle IK, and toggle stickiness.
+      There are arrays for per-joint jogging. reset_oneshot() clears the one-time flags after they are used."""
     def __init__(self):
         self.left=False; self.right=False; self.up=False; self.down=False
         self.z_up=False; self.z_down=False
@@ -124,6 +129,10 @@ class InputState:
 
 
 class InputController:
+    """Connects GLFW callbacks to our InputState.
+     It turns mouse moves and key presses into updates on the input object. 
+    It also moves the free camera (rotate, pan, zoom) using MuJoCo’s camera helpers. 
+    This class is the bridge between the window events and our control loop."""
     def __init__(self, config: TeleopConfig, model, scene, cam):
         self.cfg = config
         self.inp = InputState()
@@ -204,6 +213,11 @@ class InputController:
 
 # ----------------------------- Robot Access ----------------------------
 class RobotModel:
+    """ Loads the MuJoCo model and creates the MjData. 
+    It finds the end-effector site, maps joint names to DoF indices, and maps actuator names to IDs.
+    It also builds lookup tables for bodies and joints.
+    Provides small helpers to read the EE pose and compute the position Jacobian.
+    This class hides model plumbing so other parts can stay clean."""
     def __init__(self, cfg: TeleopConfig):
         xml = Path(cfg.xml_path)
         if not xml.exists():
@@ -287,6 +301,10 @@ class RobotModel:
 
 # ------------------------------ IK/Control -----------------------------
 class IKController:
+    """ Computes joint velocity commands from a desired end-effector position (and optional yaw).
+    Uses damped least squares for stability.
+    Can add extra terms to keep a nicer posture or hold a preferred bend. 
+    Outputs qdot that the main loop integrates into a joint target. Simple, stable, and easy to tune."""
     def __init__(self, cfg: TeleopConfig, robot: RobotModel):
         self.cfg = cfg
         self.robot = robot
@@ -349,6 +367,11 @@ class IKController:
 
 # ------------------------------ Rendering ------------------------------
 class Renderer:
+    """ Owns the camera, scene, and render context. 
+    Updates the MuJoCo scene from current data and draws it to the window.
+    Adds a target marker at the desired position and overlays help text. 
+    Also lets us switch between free camera and fixed cameras by index or name. 
+    Rendering details live here."""
     def __init__(self, cfg: TeleopConfig, robot: RobotModel):
         self.cfg = cfg
         self.robot = robot
@@ -418,6 +441,9 @@ class Renderer:
 
 # ------------------------------ Gripper -------------------------------
 class GripperController:
+    """ Tracks the desired gripper open/close value. 
+    Reads one-shot inputs (close/open) and writes the correct control value into data.ctrl. 
+    Keeps the gripper logic separate from arm motion so both are easy to reason about."""
     def __init__(self, robot: RobotModel):
         self.robot = robot
         self.target = self.robot.grip_open_val
@@ -437,6 +463,11 @@ class GripperController:
 
 # ------------------------------ Teleop App ----------------------------
 class TeleopApp:
+    """ The main application that ties everything together. 
+    Creates the window and GL context, initializes the robot, IK, renderer, input, and recorder. 
+    Runs the control loop: read inputs, update targets, compute control, step physics, record, and render. 
+    Handles resets, saving/restoring state, camera cycling, and stickiness toggles.
+      This is the entry point for running teleoperation. """
     def __init__(self, cfg: Optional[TeleopConfig] = None):
         self.cfg = cfg or TeleopConfig()
         self.robot = RobotModel(self.cfg)
