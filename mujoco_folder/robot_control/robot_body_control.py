@@ -56,7 +56,9 @@ class ActionStaging:
         self._repeat_last_action = True  # Hold last action for gravity compensation
         
     def stage_action(self, indices, values):
-        """Stage action values for specific actuator indices"""
+        """Stage action values for specific actuator indices
+           This function is to add actions the simulation loop will 
+           commit to the MuJoCo data structure in a thread-safe manner."""
         with self._lock:
             for i, val in zip(indices, values):
                 if 0 <= i < len(self._staged_ctrl):
@@ -78,12 +80,15 @@ class ActionStaging:
             return False
     
     def set_repeat_mode(self, repeat):
-        """Enable/disable action repeat mode"""
+        """Repeat last action in every step until new action if True, 
+        else hold last action only once. Used for gravity compensation
+        ."""
         with self._lock:
             self._repeat_last_action = repeat
     
     def initialize_from_current_state(self, data):
-        """Initialize action cache with current control values from MuJoCo data"""
+        """Initialize action cache with current control values from MuJoCo data.
+        Also for gravity compensation to prevent robots from falling until they have a mission."""
         with self._lock:
             self._staged_ctrl[:] = data.ctrl[:]
             self._has_new_data = False  # Don't treat this as new data
@@ -102,15 +107,15 @@ class RobotBodyControl:
         self._snapshot_lock = threading.Lock()
         self._snapshot_version = 0
         
-        # Legacy components (will be updated to use snapshots)
+        # Components for robot control
         self.embodiment_manager = EmbodimentManager(robot_dict=robot_dict)
+        # Model and data are needed for some legacy direct access
         self.physics_extractor = PhysicsStateExtractor(model, data)
         self.action_manager = ActionManager()
 
-                # Initialize camera renderer (no direct data access)
+        # Initialize camera renderer (no direct data access)
         self.camera_renderer = CameraRenderer(model)
         
-
         # Create initial snapshot   
         self.update_snapshot()
 
@@ -189,6 +194,7 @@ class RobotBodyControl:
         if not actuator_names:
             raise ValueError(f"No actuators found for robot_id={robot_id}")
         
+        # get actuator indices in the model
         actuator_indices = []
         resolved_names = []
         for name in actuator_names:
@@ -196,7 +202,6 @@ class RobotBodyControl:
             if aid >= 0:
                 actuator_indices.append(aid)
                 resolved_names.append(name)
-
         gripper_index = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_ACTUATOR, gripper_name)
         if gripper_index < 0:
             raise ValueError(f"Gripper actuator not found for robot_id={robot_id}: {gripper_name}")
@@ -204,10 +209,9 @@ class RobotBodyControl:
         snapshot = self.get_snapshot()
 
         actuator_indices, joint_targets = self.action_manager.prepare_joint_targets(snapshot, actuator_indices, gripper_index, joint_targets)
-           # Debug sample
-        sample_n = min(14, len(actuator_indices))
+
         logger.debug(f"Staging {len(actuator_indices)} actuator targets for {robot_id}: "
-                     f"{[float(joint_targets[i]) for i in range(sample_n)]} ...")
+                     f"{[float(joint_targets[i]) for i in range(min(14, len(actuator_indices)))]} ...")
 
         # Stage the actions (thread-safe)
         self.action_staging.stage_action(actuator_indices, joint_targets)
@@ -242,9 +246,8 @@ class RobotBodyControl:
             
             # Get camera images (this still needs direct access for rendering)
             # Note: Camera rendering is read-only and uses MuJoCo's render APIs
-            # which require direct model/data access. This is safe as long as
-            # rendering doesn't modify the simulation state.
             # Get camera images using safe snapshot-based rendering
+            # Turn off to remove load on process if not needed
             if not no_camera:
                 imgs_dict = self._get_robot_camera_images(robot_id)
                 packet.images = imgs_dict

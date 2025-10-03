@@ -59,13 +59,16 @@ class PolicyInference:
         self.preprocesser = Preprocessing(self.policy_manager.policies)
 
     def fill_action(self, packet):
+        """ Fill the action field in the packet based on the current observation and mission."""
         time_now = time.time()
         robot_id = packet.robot_id
         mission = packet.mission
         submission = packet.submission
 
         try:
+            # 1. Perform preprocessing to create policy item
             policy_item = self.preprocesser.preprocess(packet)
+            # 2. Get action from the appropriate policy
             action_reply = self.get_policy_action(policy_item, robot_id)
             action = action_reply.get('action', None)
             submission_status = action_reply.get('submission_status', None)
@@ -91,11 +94,14 @@ class PolicyInference:
         return packet
 
     def get_policy_action(self, policy_item, robot_id):
+        """ Get action from the appropriate policy based on the policy item and robot ID.
+        Can easily add more policies here as needed."""
         # Implement action inference logic based on the observation
         policy_name, policy = self.policy_manager.get_policy_for_robot_id(robot_id)
         # self.logger.debug(f"Using policy '{policy_name}' for robot {robot_id} of type {self.robot_dict.get(robot_id, 'Unknown')}")
         
         reply = {'action': None, 'submission_status': None}
+        # Episode policy
         if policy_name == 'Episode':
             robot_type = self.robot_dict.get(robot_id, None)
             submission_name = policy_item.get('prompt', '')

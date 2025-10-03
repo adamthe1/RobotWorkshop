@@ -8,7 +8,11 @@ class ActionManager:
         self.logger = get_logger('ActionManager')
 
     def prepare_joint_targets(self, snapshot, actuator_indices, gripper_index, joint_targets):
-        # Map names to actuator indices in the model, preserving order
+        """ Preprocess joint targets:
+            - Add gripper target if specified
+            - Align action length to indices length (pad/truncate)
+            - Clamp targets to actuator limits if snapshot is provided
+        """
         
         # Align action length to indices length
         if len(joint_targets) < len(actuator_indices):

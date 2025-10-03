@@ -25,7 +25,6 @@ class EpisodeActionMapper:
     - mapper = EpisodeActionMapper(path)
     - action = mapper.next_action(robot_id, joint_names, qpos, qvel)
 
-    This class is intentionally simple and deterministic to be safe.
     """
 
     def __init__(self, robot_types: List[str]):
@@ -58,8 +57,11 @@ class EpisodeActionMapper:
         self.robot_id_dict = {}
 
     def load_submission_paths(self, robot_types: List[str], base_path: str) -> Dict[str, Dict[str, Dict[str, str]]]:
-        """Load mapping of robot types to missions to episode parquet paths."""
+        """Load mapping of robot types to missions to episode parquet paths.
+        Returns: Dictionary of robot_type -> mission -> sub_mission -> parquet_path
+        """
         type_to_missions_to_submissions = {}
+        # Iterate over robot types and missions to build the mapping
         for rt in robot_types:
             rt_path = os.path.join(base_path, rt)
             if not os.path.isdir(rt_path):
@@ -74,6 +76,7 @@ class EpisodeActionMapper:
                 if not os.path.isdir(mission_path):
                     self.logger.warning(f"Mission directory not found for {rt}: {mission_path}")
                     continue
+                # Check for each sub-mission file
                 for sub_mission in sub_mission_list:
                     sub_mission_file = f"{sub_mission}.parquet"
                     sub_mission_path = os.path.join(mission_path, sub_mission_file)
@@ -88,6 +91,9 @@ class EpisodeActionMapper:
         return type_to_missions_to_submissions
     
     def _load_episode(self, p: str) -> np.ndarray:
+        """ Load episode actions from a parquet file.
+        Able to add augmentation such as slicing and speed adjustment.
+        Returns: np.ndarray of shape (T, A) where T = timesteps, A = action dim"""
         if not os.path.isfile(p):
             error_msg = f"Parquet file not found: {p}"
             self.logger.error(error_msg)
@@ -238,17 +244,17 @@ class EpisodeActionMapper:
 
     def next_action(self, robot_id: str, robot_type: str, mission: str, submission: str) -> List[float]:
         """
-        Return the next action - robot_id parameter ignored for compatibility.
-        
-        For now this replays sequentially. It does not yet align by state/timestamp,
-        but that can be added (e.g., nearest-neighbor on state or by stored timestamps).
+        Return the next action in the episode for the given robot_id.
+        If the episode is exhausted, returns zeros of appropriate length.
         """
         self.logger.debug(f"Next action requested for robot_id: {robot_id}, type: {robot_type}, mission: {mission}")
+        # check if episode for this robot_id exists and initialize if not
         if robot_id not in self.robot_id_dict:
             self.robot_id_dict[robot_id] = 0
         idx = self.robot_id_dict[robot_id]
         self.robot_id_dict[robot_id] = idx + 1
         
+        # Determine episode key and length
         episode_key = (robot_type, mission, submission)
         episode_length = self.episode_lengths.get(episode_key, 0)
         
@@ -265,6 +271,7 @@ class EpisodeActionMapper:
                 return [0.0] * length
 
         try:
+            # Fetch the action
             act = self.episode_actions[episode_key][idx]
         except KeyError:
             error_msg = f"Episode not found for key {episode_key}"
@@ -309,7 +316,7 @@ class EpisodeActionMapper:
         - frames: ndarray (T, A)
         - speed > 1.0: slower (more frames, interpolated or max)
         - speed < 1.0: faster (fewer frames, skip)
-        - mode: "interp" (default) uses interpolation, "max" uses max over each window
+        - mode: "interp" (default) uses normal mean interpolation, "max" uses max action over each window
         """
         if speed == 1.0 or frames.shape[0] == 0:
             return frames

@@ -5,9 +5,13 @@ from logger_config import get_logger
 logger = get_logger("PhysicsStateExtractor")
 
 class PhysicsStateExtractor:
+    """
+    Extracts physics state (joint positions, velocities, body poses) from MuJoCo model and data.
+    Uses snapshots for memory safety, can fall back to direct data access for legacy support.
+    """
     def __init__(self, model, data):
         self.model = model
-        self.data = data  # Keep for legacy compatibility, but prefer snapshots
+        self.data = data  
 
     def get_joint_state(self, robot_id, joints, snapshot=None):
         """Get joint state from snapshot (preferred) or direct data access (legacy)"""
@@ -46,9 +50,11 @@ class PhysicsStateExtractor:
                 logger.debug("Joint name not found: %s (falling back to j as index)", jname)
                 joint_id = int(j)  # fallback if j already was index
 
+            # get qpos and qvel addresses
             qpos_addr = int(self.model.jnt_qposadr[joint_id])
             qvel_addr = int(self.model.jnt_dofadr[joint_id])
 
+            # append data to lists
             qpos_list.append(float(qpos_data[qpos_addr]))
             qvel_list.append(float(qvel_data[qvel_addr]))
             joint_names.append(jname)

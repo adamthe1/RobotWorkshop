@@ -27,9 +27,11 @@ def ensure_env_file():
 
 class MainOrchestrator:
     def __init__(self):
+        # If there is no .env file, warn and create one with cwd as MAIN_DIRECTORY
         ensure_env_file()
         self.logger = get_logger('MainOrchestrator')
         
+        # start all servers with a server manager
         self.server_manager = ServerManager()
         self.running = True
         
@@ -40,35 +42,19 @@ class MainOrchestrator:
         self.logger.info("Shutdown signal received")
         self.shutdown()
         
-    def connect_to_mujoco(self, mujoco_client):
+    def connect_to_client(self, client, name):
         max_retries = 10
         for i in range(max_retries):
             try:
-                mujoco_client.connect()
-                self.logger.info("Connected to MuJoCo server")
+                client.connect()
+                self.logger.info(f"Connected to {name} server")
                 return
             except ConnectionRefusedError:
                 if i < max_retries - 1:
                     self.logger.warning(f"Connection attempt {i+1} failed, retrying...")
                     time.sleep(1)
                 else:
-                    self.logger.error("Failed to connect to MuJoCo server after max retries")
-                    raise
-
-    def connect_to_brain(self, brain_client):
-        self.logger.info("Connecting to brain...")
-        max_retries = 10
-        for i in range(max_retries):
-            try:
-                brain_client.connect()
-                self.logger.info("Connected to Brain server")
-                return
-            except ConnectionRefusedError:
-                if i < max_retries - 1:
-                    self.logger.warning(f"Brain connection attempt {i+1} failed, retrying...")
-                    time.sleep(1)
-                else:
-                    self.logger.error("Failed to connect to Brain server after max retries")
+                    self.logger.error(f"Failed to connect to {name} server after max retries")
                     raise
     
     def clean_packet(self, packet):
@@ -100,9 +86,15 @@ class MainOrchestrator:
         mujoco_client.reset_cup(robot_id)
         self.logger.info(f"Robot {robot_id} assigned mission: {packet}")
         print(f"\nHey, {robot_id} is preparing your drink, please come to it's bar\n")
-
+        # Align loop with simulation/control rate for precise replay
+        # Default to 60 Hz if not set
+        try:
+            hz = float(os.getenv("CONTROL_HZ", "30"))
+        except Exception:
+            hz = 30.0
         while self.running:
             try:
+
                 packet = self.clean_packet(packet)
                 # Step 1: Send to Queue, Dequeue from Queue, assign to robot
                 packet = mujoco_client.send_and_recv(packet)
@@ -113,26 +105,22 @@ class MainOrchestrator:
                     self.logger.error(f"Packet is None from Mujoco for robot {robot_id}")
                     raise Exception("Did not return packet from Mujoco")
 
-                # Step 3: Send to mission analyzer, get mission state
+                # Step 2: Send to mission analyzer, get mission state
                 packet = mission_manager.manage_mission(packet)
 
                 if packet.mission is None:
                     self.logger.info(f"Robot {robot_id} has no mission, resetting for next mission")
                     self.inference_loop(robot_id, clients)
                 
-                # Step 4: Send to Brain, get action
+                # Step 3: Send to Brain, get action
                 packet = brain_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Received action from Brain {packet}")
 
+                # Step 4: Send action to Mujoco and map action to robot
                 packet = mujoco_client.send_and_recv(packet)
                 self.logger.debug(f"{robot_id} Action sent, result: {packet}")
 
-                # Align loop with simulation/control rate for precise replay
-                # Default to 60 Hz if not set
-                try:
-                    hz = float(os.getenv("CONTROL_HZ", "30"))
-                except Exception:
-                    hz = 30.0
+
                 time.sleep(max(0.0, 1.0/ hz))
                 
             except Exception as e:
@@ -166,6 +154,8 @@ class MainOrchestrator:
                 return
 
             self.logger.info(f"Robot list received: {self.robot_list}")
+
+            # Set robot list and dict in all the servers
             MissionManager.set_robot_list(self.robot_list)
             BrainClient.set_robot_dict(self.robot_dict)
             QueueClient.set_robot_dict(self.robot_dict)
@@ -174,19 +164,23 @@ class MainOrchestrator:
             # Start inference loops for each robot
             for robot_id in self.robot_list:
                 self.logger.info(f"Setting up robot {robot_id} for missions")
+                # create clients for each robot
                 manager = MissionManager()
                 mujoco_client = MujocoClient()
                 brain_client = BrainClient()   
                 
-                self.connect_to_mujoco(mujoco_client)
-                self.connect_to_brain(brain_client)
-                
+                # connect to servers
+                self.connect_to_client(mujoco_client, "MuJoCo")
+                self.connect_to_client(brain_client, "Brain")
+            
+                # start inference thread for each robot
                 clients = {"manager": manager, "mujoco": mujoco_client, "brain": brain_client}
                 inference_thread = threading.Thread(
                     target=self.inference_loop, 
                     daemon=True, 
                     args=(robot_id, clients)
                 )
+
                 inference_thread.start()
                 self.logger.info(f"Started inference thread for robot {robot_id}")
 

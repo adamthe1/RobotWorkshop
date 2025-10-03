@@ -69,7 +69,7 @@ class BrainServer:
                 pkt = self._recv_packet(client_socket)
                 if pkt is None:
                     break
-                # if the type of packet is RobotListPacket, update robot_dict
+                # if the type of packet is RobotListPacket, set robot_dict where it is needed
                 if isinstance(pkt, RobotListPacket):
                     self.robot_dict = pkt.robot_dict
                     self.policy_inference = PolicyInference(robot_dict=self.robot_dict) 
@@ -80,7 +80,7 @@ class BrainServer:
                 if self.policy_inference is None:
                     self.logger.error("Send robot_dict first using RobotListPacket")
                     raise ValueError("robot_dict not set in BrainServer")
-                # Process packet and generate action
+                # if its a normal Process packet and generate action
                 reply = self.policy_inference.fill_action(pkt)
                 self._send_packet(reply, client_socket)
                 

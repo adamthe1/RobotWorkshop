@@ -19,6 +19,8 @@ def generate_mujoco_xml(y_offset=0.0, num_robots=1, robot_spacing=2.0,
         y_offset (float): Y-axis offset to apply to all objects
         num_robots (int): Number of robots to create
         robot_spacing (float): Spacing between robots in Y direction
+        use_scene (int): Optional scene variant (1 or 2)
+        add_franka_pedestal (bool): Whether to add a pedestal under each Franka Panda robot
     
     Returns:
         str: Complete MuJoCo XML string

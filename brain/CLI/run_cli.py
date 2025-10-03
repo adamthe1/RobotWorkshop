@@ -163,12 +163,14 @@ class SimpleMenuSession:
         self._missions = possible_missions
 
     def _print_menu(self) -> None:
+        """Print the mission selection menu"""
         typer.echo("Pick a mission by number:")
         for i, m in enumerate(self._missions, start=1):
             typer.echo(f"  {i}. {m}")
         typer.echo("  q. Quit")
 
     def _read_choice(self) -> Optional[int]:
+        """Read and validate user choice from menu"""
         while True:
             raw = typer.prompt("Your choice (number or 'q')").strip()
             if raw.lower() in ("q", "quit", "exit"):
@@ -180,6 +182,7 @@ class SimpleMenuSession:
             typer.echo("Invalid choice. Please enter a valid number.")
 
     def run_session(self, queue_client: QueueClient) -> None:
+        """Run the simple menu session"""
         while True:
             status = queue_client.get_status()
             self.logger.info(f"Queue status: {status}")

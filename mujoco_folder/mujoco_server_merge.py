@@ -129,8 +129,9 @@ class MuJoCoServer:
                 "FrankaPanda": state_dir / "saved_panda.npz",
                 "SO101": state_dir / "saved_so101.npz",
             }
-
+            # counter of how many robots had states applied (if none, warn and return False)
             applied = 0
+            # for each robot in the scene, load and apply its saved state if the state for its type exists
             for rid, rtype in self.robot_dict.items():
                 npz_path = type_to_file.get(rtype)
                 if not npz_path or not npz_path.exists():
@@ -141,7 +142,8 @@ class MuJoCoServer:
                 if not ("joint_names" in arr and "qpos" in arr and "qvel" in arr):
                     self.logger.warning(f"Saved file {npz_path} missing joint_names/qpos/qvel; skipping")
                     continue
-
+                
+                # apply the saved state to this robot type
                 names = [str(x) for x in arr["joint_names"].tolist()]
                 self.logger.info(f"Applying saved state to robot {rid} of type {rtype} with joints: {names}")
                 qpos = np.array(arr["qpos"], dtype=float).reshape(-1)
@@ -190,8 +192,12 @@ class MuJoCoServer:
 
         Important: OpenGL contexts are thread-affine. We both create and render
         from the same thread here to avoid a black screen.
+
+        Uses this instead of mujoco_viewer.MujocoViewer because its lighter and
+        less custom.
         """
         try:
+            
             from mujoco_folder.scene_control.lightweight_viewer import LightweightViewer
 
             if self.viewer is not None:
@@ -266,29 +272,32 @@ class MuJoCoServer:
         self.logger.info(f"Client connected: {addr}")
         try:
             while True:
-                pkt = self._recv_packet(client_socket)  # Pass socket
+                pkt = self._recv_packet(client_socket) 
+                # If it is a Robot List Packet request
                 if isinstance(pkt, RobotListPacket):
                     self.logger.debug("Received request for robot list")
+                    # return the robot list
                     reply = self.fill_robot_list(pkt)
                     self.logger.debug(f"Sending robot list: {reply.robot_list}")
-                elif pkt is None:
-                    break
+                # This is a custom Packet that resets each bar when it asks for it
                 elif getattr(pkt, 'mission', None) == 'reset_the_scene_cup_bottles':
                     try:
-                        # Packet carries robot_id as a string; extract index via split('_')[-1]
+                        # Uses the robot id to identify which bar to reset and resets it
                         reset_cup_and_bottles_to_default(self.model, self.data, pkt.robot_id)
                         reply = pkt
                     except Exception as e:
                         self.logger.error(f"reset_cup failed for robot_id={pkt.robot_id}: {e}")
                         reply = pkt
                 elif pkt.action is not None:
+                    # signal to apply action
+                    # Apply action to robot 
                     self.robot_control.apply_commands(pkt)
                     reply = pkt
                 else:
                     self.logger.debug(f"Received state request for robot {pkt.robot_id} socket {addr}")
-                    # Allow disabling camera images in state to reduce payload
                     self.logger.debug(f"About to call fill_packet for robot {pkt.robot_id} socket {addr}")
-                    reply = self.robot_control.fill_packet(pkt, no_camera=True)
+                    # Fill packet with current state for policy
+                    reply = self.robot_control.fill_packet(pkt)
                     self.logger.debug(f"fill_packet completed for robot {pkt.robot_id} socket {addr}")
                 self._send_packet(reply, client_socket)  # Pass socket
         except Exception as e:
@@ -306,7 +315,7 @@ class MuJoCoServer:
         
         while self.running:
             with self.locker:
-                # 1) Commit staged actions to data before stepping
+                # 1) Commit staged actions from the snapshot to data before stepping
                 actions_applied = self.robot_control.commit_staged_actions()
                 
                 # 2) Step the MuJoCo simulation
@@ -315,11 +324,8 @@ class MuJoCoServer:
                 # 3) Update snapshot after stepping (critical: while still holding lock)
                 self.robot_control.update_snapshot()
 
-            
-            # 4) Viewer renders from its own thread that owns the GL context
-            # (no changes needed here)
-
-            # 5) Sleep until next frame
+        
+            #Sleep until next frame
             next_time += dt
             time.sleep(max(0, next_time - time.time()))
 
@@ -395,6 +401,7 @@ class MujocoClient:
     def recv_robot_list():
         """
         Receive the list of robots from the server.
+        Asks for a RobotListPacket and returns the robot_list attribute.
         """
         client = MujocoClient()
         client.connect()
@@ -409,6 +416,7 @@ class MujocoClient:
     def recv_robot_list_and_dict():
         """
         Receive the list of robots and their types from the server.
+        Asks for a RobotListPacket and returns both robot_list and robot_dict attributes.
         """
         client = MujocoClient()
         client.connect()
@@ -423,15 +431,17 @@ class MujocoClient:
         """
         Send a pickled packet and receive the pickled reply, with debug logs.
         """
-        if self.socket is None:  # Fixed: Check self.socket instead of sock
+        if self.socket is None:  
             raise ConnectionError("Socket is not connected")
+        
+        # Here is a function to make the client send and receive packets
         try:
             self.logger.debug(f"send_and_recv - sending packet: {packet}")
             data_out = pickle.dumps(packet)
-            self.socket.sendall(struct.pack('!I', len(data_out)) + data_out)  # Fixed: Use self.socket
+            self.socket.sendall(struct.pack('!I', len(data_out)) + data_out)  
 
             # Read length prefix
-            size_data = self.socket.recv(4)  # Fixed: Use self.socket
+            size_data = self.socket.recv(4)  
             if not size_data:
                 raise ConnectionError("No data received for length prefix")
             size = struct.unpack('!I', size_data)[0]
@@ -440,7 +450,7 @@ class MujocoClient:
             # Read the full reply
             buf = b''
             while len(buf) < size:
-                chunk = self.socket.recv(size - len(buf))  # Fixed: Use self.socket
+                chunk = self.socket.recv(size - len(buf))  
                 if not chunk:
                     raise ConnectionError("Incomplete payload: connection closed")
                 buf += chunk
@@ -455,7 +465,7 @@ class MujocoClient:
         if self.socket:
             self.logger.info("Closing MuJoCo client socket")
             self.socket.close()
-            self.socket = None  # Added: Reset socket to None after closing
+            self.socket = None  
         else:
             self.logger.debug("MuJoCo client socket is already closed or was never opened")  # Changed to debug
 

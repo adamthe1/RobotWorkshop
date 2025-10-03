@@ -170,7 +170,7 @@ class QueueServer:
             lock_state = request.get("lock_state")
             return self.set_robot_lock(robot_id, lock_state)
         
-        elif action == "add_robot_ids":  # New action
+        elif action == "add_robot_ids": 
             robot_ids = request.get("robot_ids")
             return self.add_robot_ids(robot_ids)
             
@@ -222,6 +222,7 @@ class QueueServer:
                     self.robot_locks[rid] = 0
             # Move any generic free robots into their type queues
             remaining_generic = deque()
+            # move all free robots to type queues if type known else keep generic
             while self.free_robot_queue:
                 rid = self.free_robot_queue.popleft()
                 rtype = self.robot_dict.get(rid)
@@ -230,6 +231,7 @@ class QueueServer:
                         self.type_to_queue[rtype].append(rid)
                 else:
                     remaining_generic.append(rid)
+
             self.free_robot_queue = remaining_generic
         self.logger.info(f"Robot dict set. Types: {set(robot_dict.values())}")
         return {"status": "success"}
@@ -247,6 +249,7 @@ class QueueServer:
                     return {"status": "no_robots", "robot_id": None, "mission": None}
                 return {"status": "pending", "robot_id": None, "mission": None}
 
+            # Have a pair ready
             robot_id, mission = self.next_pair
             # Lock robot and clear next_pair
             self.robot_locks[robot_id] = 1
@@ -274,12 +277,14 @@ class QueueServer:
             # Set robot lock to free
             self.robot_locks[robot_id] = 0
             rtype = self.robot_dict.get(robot_id)
-            if rtype is not None:
+            # if i know the type, put in type queue
+            if rtype is not None: 
                 # Deduplicate within type queue
                 if robot_id not in self.type_to_queue[rtype]:
                     self.type_to_queue[rtype].append(robot_id)
                 return {"status": "success", "message": f"Robot '{robot_id}' enqueued (type {rtype})"}
-            else:
+            else: # dont know type, put in generic queue
+                # Deduplicate within generic queue
                 if robot_id not in self.free_robot_queue:
                     self.free_robot_queue.append(robot_id)
                     return {"status": "success", "message": f"Robot '{robot_id}' enqueued (generic)"}
@@ -338,7 +343,7 @@ class QueueServer:
             }
 
     def _eligible_types_for_mission(self, mission):
-        # Build inverse map mission -> types
+        """ Build inverse map mission -> types """
         types = []
         for rtype, missions in SUPPORTED_MISSIONS_PER_ROBOT.items():
             if mission in missions:
@@ -351,6 +356,9 @@ class QueueServer:
 
     def _filler_loop(self):
         """Continuously try to populate next_pair from queues using heuristic.
+        Heuristic:
+            - Prefer robots that can do fewer missions (more specialized)
+            - Prefer robots that have done fewer missions so far
 
         Scans the mission queue to find the first mission that has at least one
         eligible robot available. This avoids head-of-line blocking.
@@ -390,6 +398,7 @@ class QueueServer:
                             _, best_type = candidates[0]
                             robot_id = self.type_to_queue[best_type].popleft()
                             selected = (idx, best_type, robot_id, mission)
+
                             break
 
                         if selected is None:
